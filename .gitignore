@@ -44,3 +44,9 @@ Desktop.ini
 *.tmp
 *.bak
 ~$*
+
+
+
+# Generated installer binaries
+/installer/Voyager.exe
+/installer/WebView2Loader.dll
