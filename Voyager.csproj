@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Voyager</RootNamespace>
+    <AssemblyName>Voyager</AssemblyName>
+
+    <!-- Linux / macOS からでも win-x64 向けにビルドできるようにする -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+
+    <ApplicationIcon>assets\Voyager.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- ブランド情報（前バージョンは GitHub, Inc. のまま残っていた） -->
+    <Product>Voyager</Product>
+    <AssemblyTitle>Voyager</AssemblyTitle>
+    <Company>K-S System</Company>
+    <Authors>K-S System</Authors>
+    <Copyright>Copyright (c) 2026 K-S System</Copyright>
+    <Description>Voyager - WebView2 ベースの AI ブラウザ</Description>
+    <!-- 既定値。ビルド時に -p:Version=1.0.7 のように渡すと、
+         FileVersion / AssemblyVersion / ProductVersion がすべてそれに追従する。
+         ここで FileVersion を固定すると MSI がファイル版で更新判定できなくなるので固定しない。 -->
+    <Version>1.0.0</Version>
+
+    <!-- ビルド先ローカルパスを PDB に残さない -->
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- 参照 DLL の .xml ドキュメントを出力に含めない -->
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
+
+  <!--
+    WebView2 パッケージは WinForms 版と一緒に WPF 版も参照に加える。
+    WPF 版は WindowsBase 5.0.0.0 を要求し、.NET 10 の WindowsBase 4.0.0.0 と衝突して
+    MSB3277 警告になる（このアプリは WinForms なので WPF 版は使わない）。
+    参照から外して警告ごと消し、出力も小さくする。
+  -->
+  <Target Name="DropWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(FileName)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+
+</Project>
