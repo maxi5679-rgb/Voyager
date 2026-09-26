@@ -42,7 +42,7 @@ internal sealed class BookmarkSidebar : Panel
             BackColor = Theme.Card,
             ForeColor = Theme.Text,
             Font = Theme.Ui(10f),
-            PlaceholderText = "ブックマークを検索",
+            PlaceholderText = Strings.SearchBookmarks,
         };
         _tree = new TreeView
         {
@@ -106,8 +106,8 @@ internal sealed class BookmarkSidebar : Panel
             WrapContents = false,
             BackColor = Theme.Surface,
         };
-        tools.Controls.Add(SmallButton("読み込み", "他のブラウザの bookmarks.html を取り込む", (_, _) => ImportDialog()));
-        tools.Controls.Add(SmallButton("書き出し", "bookmarks.html として保存する", (_, _) => ExportDialog()));
+        tools.Controls.Add(SmallButton(Strings.Import, Strings.ImportTip, (_, _) => ImportDialog()));
+        tools.Controls.Add(SmallButton(Strings.Export, Strings.ExportTip, (_, _) => ExportDialog()));
 
         // Fill を先に、端に寄せるものを後に。順序が配置を決める。
         Controls.Add(_tree);
@@ -232,12 +232,12 @@ internal sealed class BookmarkSidebar : Panel
             foreach (var h in hits)
             {
                 var path = _store.PathOf(h);
-                var n = new TreeNode(h.Title.Length > 0 ? h.Title : h.Url ?? "") { Tag = h };
+                var n = new TreeNode(h.Title.Length > 0 ? Strings.FolderName(h.Title) : h.Url ?? "") { Tag = h };
                 n.ToolTipText = string.IsNullOrEmpty(path) ? (h.Url ?? "") : $"{path}\n{h.Url}";
                 if (path.Length > 0) n.Text += $"   〈{path}〉";
                 _tree.Nodes.Add(n);
             }
-            _count.Text = hits.Count >= 200 ? "200 件以上（先頭のみ表示）" : $"{hits.Count} 件";
+            _count.Text = hits.Count >= 200 ? Strings.TooManyHits : Strings.Hits(hits.Count);
         }
         else
         {
@@ -246,7 +246,7 @@ internal sealed class BookmarkSidebar : Panel
                     _tree.Nodes.Add(MakeNode(root));
 
             var total = _store.Nodes.Count(n => n.IsLink && !n.IsDeleted);
-            _count.Text = $"全 {total:N0} 件";
+            _count.Text = Strings.TotalCount(total);
             if (_tree.Nodes.Count > 0) _tree.Nodes[0].Expand();
         }
 
@@ -255,7 +255,7 @@ internal sealed class BookmarkSidebar : Panel
 
     private TreeNode MakeNode(BookmarkNode b)
     {
-        var n = new TreeNode(b.Title.Length > 0 ? b.Title : (b.Url ?? "(名前なし)")) { Tag = b };
+        var n = new TreeNode(b.Title.Length > 0 ? Strings.FolderName(b.Title) : (b.Url ?? Strings.Untitled)) { Tag = b };
         if (b.IsFolder)
         {
             if (_store.Children(b.Id).Count > 0)
@@ -297,16 +297,16 @@ internal sealed class BookmarkSidebar : Panel
 
         if (b.IsLink)
         {
-            menu.Items.Add(DarkMenu.Item("開く", () => Open(node, false)));
-            menu.Items.Add(DarkMenu.Item("新しいタブで開く", () => Open(node, true)));
+            menu.Items.Add(DarkMenu.Item(Strings.Open, () => Open(node, false)));
+            menu.Items.Add(DarkMenu.Item(Strings.OpenInNewTab, () => Open(node, true)));
             menu.Items.Add(new ToolStripSeparator());
         }
-        menu.Items.Add(DarkMenu.Item("名前を変更 (F2)", () => node.BeginEdit()));
+        menu.Items.Add(DarkMenu.Item(Strings.Rename, () => node.BeginEdit()));
         if (b.Id != BookmarkStore.RootBar && b.Id != BookmarkStore.RootOther)
         {
-            menu.Items.Add(DarkMenu.Item("ブックマーク バーへ移す", () => MoveToBar(b),
+            menu.Items.Add(DarkMenu.Item(Strings.MoveToBar, () => MoveToBar(b),
                                          b.ParentId != BookmarkStore.RootBar));
-            menu.Items.Add(DarkMenu.Item("削除", () => Delete(node)));
+            menu.Items.Add(DarkMenu.Item(Strings.Delete, () => Delete(node)));
         }
 
         menu.Show(_tree, at);
@@ -329,8 +329,8 @@ internal sealed class BookmarkSidebar : Panel
         {
             var n = CountUnder(b.Id);
             if (n > 0 && MessageBox.Show(
-                    $"「{b.Title}」の中の {n:N0} 件も一緒に消えます。よろしいですか。",
-                    "ブックマークの削除", MessageBoxButtons.OKCancel,
+                    Strings.DeleteFolderWarning(b.Title, n),
+                    Strings.DeleteBookmark, MessageBoxButtons.OKCancel,
                     MessageBoxIcon.Warning) != DialogResult.OK) return;
         }
 
@@ -377,8 +377,8 @@ internal sealed class BookmarkSidebar : Panel
     {
         using var dlg = new OpenFileDialog
         {
-            Title = "ブックマークの読み込み",
-            Filter = "ブックマーク (*.html;*.htm)|*.html;*.htm|すべてのファイル (*.*)|*.*",
+            Title = Strings.ImportTitle,
+            Filter = Strings.ImportFilter,
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
@@ -387,7 +387,7 @@ internal sealed class BookmarkSidebar : Panel
             var html = File.ReadAllText(dlg.FileName, System.Text.Encoding.UTF8);
             // ファイル名に日付が入っていることが多いので、今日の日付は足さない
             var label = Path.GetFileNameWithoutExtension(dlg.FileName);
-            if (string.IsNullOrWhiteSpace(label)) label = $"インポート {DateTime.Now:yyyy-MM-dd}";
+            if (string.IsNullOrWhiteSpace(label)) label = Strings.ImportedFolder(DateTime.Now);
 
             Cursor = Cursors.WaitCursor;
             var r = NetscapeBookmarks.Import(_store, html, BookmarkStore.RootOther,
@@ -400,13 +400,13 @@ internal sealed class BookmarkSidebar : Panel
             Refresh_();
             Log.Write($"bookmarks import: {r}");
             MessageBox.Show(
-                $"「{label}」に取り込みました。\n\n{r}",
-                "ブックマークの読み込み", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Strings.ImportDone(label, r.ToString()),
+                Strings.ImportTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Cursor = Cursors.Default;
-            MessageBox.Show("ファイルを読み込めませんでした。", "ブックマークの読み込み",
+            MessageBox.Show(Strings.ImportFailed, Strings.ImportTitle,
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
@@ -415,8 +415,8 @@ internal sealed class BookmarkSidebar : Panel
     {
         using var dlg = new SaveFileDialog
         {
-            Title = "ブックマークの書き出し",
-            Filter = "ブックマーク (*.html)|*.html",
+            Title = Strings.ExportTitle,
+            Filter = Strings.ExportFilter,
             FileName = $"voyager_bookmarks_{DateTime.Now:yyyy_MM_dd}.html",
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
@@ -424,12 +424,12 @@ internal sealed class BookmarkSidebar : Panel
         try
         {
             File.WriteAllText(dlg.FileName, NetscapeBookmarks.Export(_store), new System.Text.UTF8Encoding(false));
-            MessageBox.Show("書き出しました。", "ブックマークの書き出し",
+            MessageBox.Show(Strings.ExportDone, Strings.ExportTitle,
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show("保存できませんでした。", "ブックマークの書き出し",
+            MessageBox.Show(Strings.ExportFailed, Strings.ExportTitle,
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }

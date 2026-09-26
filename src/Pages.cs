@@ -12,6 +12,9 @@ internal static class Pages
 {
     private static string E(string s) => WebUtility.HtmlEncode(s);
 
+    /// <summary>ページ内メニューは JavaScript の '…' の中に入るので、引用符だけ潰しておく。</summary>
+    private static string Js(string s) => s.Replace("\\", "\\\\").Replace("'", "\\'");
+
     private static string Shell(string title, string body, bool settingsOpen = false, bool hasEngine = false) => $$"""
         <!doctype html>
         <html lang="ja"><head><meta charset="utf-8" />
@@ -41,17 +44,17 @@ internal static class Pages
             const selection = String(window.getSelection() || '');
             const items = [];
 
-            if (selection) items.push(['コピー', () => { send({ type: 'clip', text: selection }); }, true]);
+            if (selection) items.push(['{{Js(Strings.Copy)}}', () => { send({ type: 'clip', text: selection }); }, true]);
             if (editable) {
-              items.push(['切り取り', () => { send({ type: 'clip', text: selection }); document.execCommand('delete'); }, !!selection]);
-              items.push(['貼り付け', () => send({ type: 'paste' }), true]);
+              items.push(['{{Js(Strings.Cut)}}', () => { send({ type: 'clip', text: selection }); document.execCommand('delete'); }, !!selection]);
+              items.push(['{{Js(Strings.Paste)}}', () => send({ type: 'paste' }), true]);
             }
             if (items.length) items.push(null);
 
-            items.push(['新しいタブ', () => send({ type: 'newTab' }), true]);
-            items.push(['ホーム', () => send({ type: 'home' }), true]);
-            items.push([CTX.settings ? '設定を閉じる' : '設定', () => send({ type: 'toggleSettings' }), true]);
-            items.push(['AI を選び直す', () => send({ type: 'picker' }), CTX.hasEngine]);
+            items.push(['{{Js(Strings.NewTab)}}', () => send({ type: 'newTab' }), true]);
+            items.push(['{{Js(Strings.Home)}}', () => send({ type: 'home' }), true]);
+            items.push([CTX.settings ? '{{Js(Strings.CloseSettings)}}' : '{{Js(Strings.Settings)}}', () => send({ type: 'toggleSettings' }), true]);
+            items.push(['{{Js(Strings.PickAiMenu)}}', () => send({ type: 'picker' }), CTX.hasEngine]);
 
             const box = document.createElement('div');
             box.id = 'ctx';
@@ -109,7 +112,7 @@ internal static class Pages
             <div class="panel">
               <p class="kicker">AI browser v{{App.Version}}</p>
               <div class="brand"><h1>Voyager</h1><span class="sub">V'Ger</span></div>
-              <p class="lead">使う AI の公式サイトを開きます。Google や YouTube もそのまま見られます。</p>
+              <p class="lead">{{E(Strings.PickerLead)}}</p>
               <div class="grid two">{{cards}}</div>
             </div>
             """, settingsOpen: false, hasEngine: false);
@@ -129,11 +132,11 @@ internal static class Pages
         return Shell("Voyager", $$"""
             <div class="panel">
               <p class="kicker">{{E(engine.Name)}}</p>
-              <h1>どこへ行く</h1>
-              <p class="lead">アドレスを貼るか、下のサイトを開きます。質問は選んだ AI 本体に送ります。</p>
+              <h1>{{E(Strings.StartTitle)}}</h1>
+              <p class="lead">{{E(Strings.StartLead)}}</p>
               <div class="grid">
                 <button class="card center" data-msg='{"type":"open","url":"{{engine.Home}}"}'>
-                  {{E(engine.Name)}} を開く
+                  {{E(Strings.OpenEngine(engine.Name))}}
                 </button>
                 <div class="grid three">{{sites}}</div>
               </div>
@@ -161,11 +164,8 @@ internal static class Pages
             return $"""
                 <figure class="shot">
                   <img src="data:image/jpeg;base64,{data}"
-                       alt="星間空間へ出るボイジャー1号の想像図">
-                  <figcaption>
-                    星間空間に入るボイジャー1号の想像図。実写ではありません。<br>
-                    Credit: NASA/JPL-Caltech（PIA17462, 2013）
-                  </figcaption>
+                       alt="{E(Strings.AboutImageAlt)}">
+                  <figcaption>{Strings.AboutImageCaption}</figcaption>
                 </figure>
                 """;
         }
@@ -181,38 +181,37 @@ internal static class Pages
         var exe = Environment.ProcessPath ?? AppContext.BaseDirectory;
         var built = File.Exists(exe) ? File.GetLastWriteTime(exe).ToString("yyyy-MM-dd HH:mm") : "-";
 
-        return Shell("Voyager について", $$"""
+        return Shell(Strings.AboutTitle, $$"""
             <div class="panel">
               <p class="kicker">about</p>
               <div class="brand" style="margin:8px 0 4px">
                 <h1 style="margin:0">Voyager</h1>
                 <span class="sub" style="font-size:22px">V'Ger</span>
               </div>
-              <p class="lead">バージョン {{E(App.Version)}}</p>
+              <p class="lead">{{E(Strings.Version(App.Version))}}</p>
 
               {{AboutImage()}}
 
-              <h2>構成</h2>
+              <h2>{{E(Strings.Build)}}</h2>
               <p class="meta">
-                WebView2 ランタイム {{E(browserVersion ?? "未検出")}}<br>
+                {{E(Strings.Runtime(browserVersion ?? Strings.NotDetected))}}<br>
                 .NET {{E(Environment.Version.ToString())}} / {{E(System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString())}}<br>
-                ビルド {{E(built)}}
+                {{E(Strings.BuiltAt(built))}}
               </p>
 
-              <h2>場所</h2>
+              <h2>{{E(Strings.Places)}}</h2>
               <p class="meta">
-                本体　　{{E(exe)}}<br>
-                設定　　{{E(AppSettings.Dir)}}<br>
-                データ　{{E(AppSettings.UserDataDir)}}
+                {{E(Strings.PlaceApp)}}: {{E(exe)}}<br>
+                {{E(Strings.PlaceSettings)}}: {{E(AppSettings.Dir)}}<br>
+                {{E(Strings.PlaceData)}}: {{E(AppSettings.UserDataDir)}}
               </p>
 
               <div class="grid" style="margin-top:28px">
-                <button class="card center" data-msg='{"type":"toggleSettings"}'>設定へ</button>
+                <button class="card center" data-msg='{"type":"toggleSettings"}'>{{E(Strings.ToSettings)}}</button>
               </div>
 
               <p class="meta" style="margin-top:32px">
-                銘板の汚れで <strong>VOYAGER</strong> の三文字が隠れ、残った <strong>V GER</strong> を
-                自分の名だと思い込んで還ってきた探査機がいました。こちらは開くたびに名乗ります。
+                {{Strings.Nameplate}}
               </p>
             </div>
             """, settingsOpen: false, hasEngine: false);
@@ -223,10 +222,10 @@ internal static class Pages
     {
         (string id, string label, string hint)[] homes =
         [
-            ("start",  "スタート画面",  "AI と行き先を選ぶ画面"),
-            ("ai",     "選んでいる AI", "公式サイトを開く"),
-            ("google", "Google",        "https://www.google.co.jp/"),
-            ("custom", "指定した URL",  "ホームボタンでこのアドレスを開く"),
+            ("start",  Strings.HomeStart,  Strings.HomeStartHint),
+            ("ai",     Strings.HomeAi,     Strings.HomeAiHint),
+            ("google", "Google",           "https://www.google.co.jp/"),
+            ("custom", Strings.HomeCustom, Strings.HomeCustomHint),
         ];
 
         var choices = new StringBuilder();
@@ -240,7 +239,7 @@ internal static class Pages
                 """);
         }
 
-        var options = new StringBuilder("<option value=\"\">起動時に選ぶ</option>");
+        var options = new StringBuilder($"<option value=\"\">{E(Strings.ChooseAtStartup)}</option>");
         foreach (var e in Engines.All)
         {
             var sel = current?.Id == e.Id ? " selected" : "";
@@ -254,62 +253,63 @@ internal static class Pages
                 """
             : "";
 
-        return Shell("設定 - Voyager", $$"""
+        return Shell($"{Strings.SettingsTitle} - Voyager", $$"""
             <div class="panel">
               <p class="kicker">Settings</p>
-              <h1>設定</h1>
-              <p class="lead">ホームボタンの行き先と、使う AI を決めます。</p>
-              <h2>ホーム</h2>
+              <h1>{{E(Strings.SettingsTitle)}}</h1>
+              <p class="lead">{{E(Strings.SettingsLead)}}</p>
+
+              <h2>{{E(Strings.LanguageHeading)}}</h2>
+              <div class="grid">
+                <select class="field" data-change='{"type":"setLanguage"}'>
+                  <option value="ja"{{(Strings.Current == "ja" ? " selected" : "")}}>日本語</option>
+                  <option value="en"{{(Strings.Current == "en" ? " selected" : "")}}>English</option>
+                </select>
+              </div>
+              <p class="meta">{{E(Strings.LanguageNote)}}</p>
+
+              <h2>{{E(Strings.HomeHeading)}}</h2>
               <div class="grid">{{choices}}</div>
               <div class="grid">{{customRow}}</div>
-              <h2>AI</h2>
+              <h2>{{E(Strings.AiHeading)}}</h2>
               <label class="check">
                 <input type="checkbox" {{(s.RememberEngine ? "checked" : "")}} data-change='{"type":"setRemember"}' />
-                前回選んだ AI を覚えておく
+                {{E(Strings.RememberEngine)}}
               </label>
               <div class="grid" style="margin-top:12px">
                 <select class="field" data-change='{"type":"setEngine"}'>{{options}}</select>
               </div>
-              <h2>ダウンロード</h2>
+              <h2>{{E(Strings.DownloadsHeading)}}</h2>
               <div class="grid">
                 <div class="choice">
                   <div style="flex:1">
-                    <strong>保存先</strong><br>
-                    <small>{{E(string.IsNullOrWhiteSpace(s.DownloadDir) ? "Windows の既定（ダウンロード フォルダー）" : s.DownloadDir)}}</small>
+                    <strong>{{E(Strings.SaveLocation)}}</strong><br>
+                    <small>{{E(string.IsNullOrWhiteSpace(s.DownloadDir) ? Strings.WindowsDefaultFolder : s.DownloadDir)}}</small>
                   </div>
                   <button class="field" style="width:auto;padding:8px 14px;cursor:pointer"
-                          data-msg='{"type":"pickDownloadDir"}'>変更</button>
+                          data-msg='{"type":"pickDownloadDir"}'>{{E(Strings.Change)}}</button>
                   {{(string.IsNullOrWhiteSpace(s.DownloadDir) ? "" : """
                   <button class="field" style="width:auto;padding:8px 14px;margin-left:8px;cursor:pointer"
-                          data-msg='{"type":"resetDownloadDir"}'>既定に戻す</button>
+                          data-msg='{"type":"resetDownloadDir"}'>{{E(Strings.ResetToDefault)}}</button>
                   """)}}
                 </div>
               </div>
               <label class="check" style="margin-top:12px">
                 <input type="checkbox" {{(s.AskDownloadDir ? "checked" : "")}} data-change='{"type":"setAskDownloadDir"}' />
-                ダウンロードするたびに保存先を確認する
+                {{E(Strings.AskEveryDownload)}}
               </label>
-              <p class="meta">
-                保存先は次回起動時も引き継ぎます。C ドライブではなく F ドライブへ直接落とす、といった指定もできます。<br>
-                指定した場所が見つからないとき（外付けを外した後など）は、黙って Windows の既定に戻ります。
-              </p>
+              <p class="meta">{{Strings.DownloadsNote}}</p>
 
-              <h2>右クリック</h2>
+              <h2>{{E(Strings.ContextMenuHeading)}}</h2>
               <label class="check">
                 <input type="checkbox" {{(s.PageContextMenu ? "checked" : "")}} data-change='{"type":"setPageContextMenu"}' />
-                ページ側のメニューを優先する
+                {{E(Strings.PreferPageMenu)}}
               </label>
-              <p class="meta">
-                入れておくと、Google スプレッドシートや claude.ai など自前のメニューを持つサイトでは
-                そちらが出ます。代わりに AI の入力欄のように、ページがメニューを出さずに
-                右クリックだけ握り潰す場所では何も出ません。<br>
-                外すと、どこでも Voyager のメニューが出ます。<br>
-                どちらの設定でも <strong>Shift + 右クリック</strong> は必ず Voyager のメニューです。
-              </p>
-              <h2>データ</h2>
-              <p class="meta">ログイン状態と Cookie は次の場所に保存されます。<br>{{E(AppSettings.UserDataDir)}}</p>
+              <p class="meta">{{Strings.ContextMenuNote}}</p>
+              <h2>{{E(Strings.DataHeading)}}</h2>
+              <p class="meta">{{E(Strings.DataNote)}}<br>{{E(AppSettings.UserDataDir)}}</p>
               <div class="grid" style="margin-top:8px">
-                <button class="card center" data-msg='{"type":"about"}'>Voyager について</button>
+                <button class="card center" data-msg='{"type":"about"}'>{{E(Strings.AboutButton)}}</button>
               </div>
             </div>
             """, settingsOpen: true, hasEngine: current is not null);

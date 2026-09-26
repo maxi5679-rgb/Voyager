@@ -44,7 +44,7 @@ internal static class Program
         try
         {
             var version = CoreWebView2Environment.GetAvailableBrowserVersionString();
-            detail = string.IsNullOrEmpty(version) ? "検出されたバージョン: なし" : $"検出されたバージョン: {version}";
+            detail = Strings.DetectedVersion(version);
             return !string.IsNullOrEmpty(version);
         }
         catch (Exception ex)

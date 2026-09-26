@@ -38,6 +38,13 @@ internal sealed class AppSettings
     /// <summary>ダウンロードのたびに保存先をたずねるか。</summary>
     public bool AskDownloadDir { get; set; }
 
+    /// <summary>
+    /// 画面の言語。"ja" か "en"。
+    /// いまは設定で明示的に選ぶ。将来 "auto"（Windows の表示言語に従う）を足して
+    /// それを既定にする予定なので、bool ではなく文字列にしてある。
+    /// </summary>
+    public string Language { get; set; } = "ja";
+
     [JsonIgnore]
     public static string Dir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Voyager");

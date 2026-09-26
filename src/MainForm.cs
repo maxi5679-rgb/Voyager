@@ -36,10 +36,12 @@ internal sealed class MainForm : Form
         BackColor = Theme.Card,
         ForeColor = Theme.Text,
         Font = Theme.Ui(10f),
-        PlaceholderText = "URL または質問",
     };
     private Button _back = null!, _fwd = null!, _reload = null!, _home = null!, _engineBtn = null!, _settingsBtn = null!;
     private Button _star = null!, _bmBtn = null!, _newTabBtn = null!;
+
+    /// <summary>吹き出しは 1 つを使い回す。言語を切り替えたときに差し替えるため。</summary>
+    private readonly ToolTip _tips = new();
 
     /// <summary>右上のボタン置き場。拡大率を変えたときに幅が足りなくなる件の計測用に持っておく。</summary>
     private FlowLayoutPanel _topRight = null!;
@@ -86,6 +88,9 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
+        // 画面を組む前に言語を決める。ここから後に作るものは全部これを見る。
+        Strings.Use(_settings.Language);
+
         Text = App.Name;
         BackColor = Theme.Background;
         MinimumSize = new Size(800, 560);
@@ -157,10 +162,10 @@ internal sealed class MainForm : Form
             BackColor = Theme.Surface,
         };
         _topRight = topRight;
-        var newTab = IconButton("+", "新しいタブ (Ctrl+T)", (_, _) => NewTab());
+        var newTab = IconButton("+", Strings.NewTabTip, (_, _) => NewTab());
         _newTabBtn = newTab;
-        _engineBtn = TextButton("AI", "使う AI を選び直す", (_, _) => OpenPicker());
-        _settingsBtn = TextButton("設定", "設定", (_, _) => ToggleSettings());
+        _engineBtn = TextButton("AI", Strings.PickAiTip, (_, _) => OpenPicker());
+        _settingsBtn = TextButton(Strings.Settings, Strings.Settings, (_, _) => ToggleSettings());
         topRight.Controls.AddRange([newTab, _engineBtn, _settingsBtn]);
 
         // タブ列は「下段のアドレス欄と同じ入れ子構造」にする。
@@ -182,16 +187,17 @@ internal sealed class MainForm : Form
             Padding = new Padding(8, 8, 0, 0),
             BackColor = Theme.Surface,
         };
-        _back = IconButton("‹", "戻る (Alt+←)", (_, _) => Active()?.CoreWebView2?.GoBack());
-        _fwd = IconButton("›", "進む (Alt+→)", (_, _) => Active()?.CoreWebView2?.GoForward());
-        _reload = IconButton("↻", "再読み込み (F5)", (_, _) => Active()?.CoreWebView2?.Reload());
-        _home = IconButton("⌂", "ホーム", (_, _) => GoHome());
-        _star = IconButton("☆", "このページをブックマーク (Ctrl+D)", (_, _) => AddCurrentPage());
-        _bmBtn = IconButton("▤", "ブックマーク (Ctrl+Shift+O)", (_, _) => ToggleSidebar());
+        _back = IconButton("‹", Strings.BackTip, (_, _) => Active()?.CoreWebView2?.GoBack());
+        _fwd = IconButton("›", Strings.ForwardTip, (_, _) => Active()?.CoreWebView2?.GoForward());
+        _reload = IconButton("↻", Strings.ReloadTip, (_, _) => Active()?.CoreWebView2?.Reload());
+        _home = IconButton("⌂", Strings.Home, (_, _) => GoHome());
+        _star = IconButton("☆", Strings.AddBookmarkTip, (_, _) => AddCurrentPage());
+        _bmBtn = IconButton("▤", Strings.BookmarksTip, (_, _) => ToggleSidebar());
         navLeft.Controls.AddRange([_back, _fwd, _reload, _home, _star, _bmBtn]);
 
         var omniHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 9, 10, 9), BackColor = Theme.Surface };
         _omni.Dock = DockStyle.Fill;
+        _omni.PlaceholderText = Strings.OmniPlaceholder;
         _omni.TabStop = false;   // 起動直後にここへフォーカスが来ないように
         _omni.TextChanged += (_, _) => { if (!_omniSyncing) _omniEditing = true; };
         _omni.Leave += (_, _) => { _omniEditing = false; _omniFresh = false; };
@@ -234,7 +240,7 @@ internal sealed class MainForm : Form
         _navBar.Controls.Add(navLeft);
     }
 
-    private static Button Base(string text, string tip, EventHandler onClick, int width)
+    private Button Base(string text, string tip, EventHandler onClick, int width)
     {
         var b = new Button
         {
@@ -258,13 +264,44 @@ internal sealed class MainForm : Form
         b.FlatAppearance.MouseOverBackColor = Theme.CardHover;
         b.FlatAppearance.MouseDownBackColor = Theme.CardHover;
         b.Click += onClick;
-        new ToolTip().SetToolTip(b, tip);
+        _tips.SetToolTip(b, tip);
         return b;
     }
 
-    private static Button IconButton(string text, string tip, EventHandler onClick) => Base(text, tip, onClick, 34);
+    private Button IconButton(string text, string tip, EventHandler onClick) => Base(text, tip, onClick, 34);
 
-    private static Button TextButton(string text, string tip, EventHandler onClick)
+    /// <summary>
+    /// 言語を切り替えたときに、もう作ってしまった画面の文字を入れ直す。
+    /// メニューと内部ページは開くたびに作り直すので、ここで面倒を見るのは
+    /// 一度きりしか文字を入れていないもの（ボタン・吹き出し・案内文）だけでいい。
+    /// </summary>
+    private void ApplyStrings()
+    {
+        _omni.PlaceholderText = Strings.OmniPlaceholder;
+        _settingsBtn.Text = Strings.Settings;
+
+        _tips.SetToolTip(_newTabBtn, Strings.NewTabTip);
+        _tips.SetToolTip(_engineBtn, Strings.PickAiTip);
+        _tips.SetToolTip(_settingsBtn, Strings.Settings);
+        _tips.SetToolTip(_back, Strings.BackTip);
+        _tips.SetToolTip(_fwd, Strings.ForwardTip);
+        _tips.SetToolTip(_reload, Strings.ReloadTip);
+        _tips.SetToolTip(_home, Strings.Home);
+        _tips.SetToolTip(_star, Strings.AddBookmarkTip);
+        _tips.SetToolTip(_bmBtn, Strings.BookmarksTip);
+
+        // 中身を持たないタブの題名（「新しいタブ」）も入れ直す。
+        foreach (var t in _tabs) if (t.Url is null) t.Title = Strings.NewTab;
+
+        var omni = _omni.Width;
+        LayoutTabs();
+        UpdateChrome();
+        LogChromeWidths($"language {Strings.Current}");
+        Log.Write($"strings: {Strings.Current} settings=\"{_settingsBtn.Text}\" " +
+                  $"settingsW={_settingsBtn.Width} aiW={_engineBtn.Width} omniW={omni}->{_omni.Width}");
+    }
+
+    private Button TextButton(string text, string tip, EventHandler onClick)
     {
         var b = Base(text, tip, onClick, 74);
         b.Font = Theme.Ui(9f);
@@ -333,30 +370,37 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"WebView2 の初期化に失敗しました。\n\n{ex.Message}",
+                Strings.WebView2InitFailed(ex.Message),
                 App.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
             Close();
         }
     }
 
     /// <summary>
-    /// 右上のボタンが 200% で画面外へ出る件の計測。
+    /// 上段の幅の計測。200% や英語表示でボタンが切れないかを、画面写真なしで判定するためのもの。
     ///
-    /// topRight は Dock=Right + AutoSize なので、幅は子の合計から決まる。その確定が
-    /// 拡大率の変更に追いつかないと、パネルだけ細いまま残り、FlowLayoutPanel は
-    /// はみ出した子を切り落とす。合計がパネル幅を超えていれば、それが起きている。
+    /// 以前は「子の合計 &lt;= パネル幅」で fits を出していたが、topRight は
+    /// Dock=Right + AutoSize なので、パネル幅は子の合計そのもの。あれは常に yes になる
+    /// 同語反復だった。見るべきは上段のどこまでをボタンが食べ、タブ列に何画素残ったか。
+    ///
+    /// clip は、いちばん右のボタン（設定 / Settings）の右端が上段の外へ出ていないか。
+    /// tabs は残った幅。ここが 1 タブぶん（92 論理画素）を割ると、タブが潰れ始める。
     /// </summary>
     private void LogChromeWidths(string when)
     {
         if (_topRight is null || _settingsBtn is null) return;
 
-        var sum = 0;
-        foreach (Control c in _topRight.Controls) sum += c.Width + c.Margin.Horizontal;
-        sum += _topRight.Padding.Horizontal;
+        var bar = _topBar.ClientSize.Width;
+        var right = _topRight.Width;                       // ボタン群が食べた幅
+        var tabs = _tabStrip.ClientSize.Width;             // タブ列に残った幅
+        var edge = _topRight.Left + _settingsBtn.Right;    // 右端ボタンの右辺（上段の座標で）
+        var room = Scale(92);                              // タブ 1 個分の下限
 
-        Log.Write($"topright {when}: dpi={DeviceDpi} panel={_topRight.Width} need={sum} " +
-                  $"bar={_topBar.Width} +={_newTabBtn.Width} AI={_engineBtn.Width} 設定={_settingsBtn.Width} " +
-                  $"right={_topRight.Right} fits={(sum <= _topRight.Width ? "yes" : "NO")}");
+        Log.Write($"topbar {when}: dpi={DeviceDpi} lang={Strings.Current} bar={bar} right={right} tabs={tabs} " +
+                  $"+={_newTabBtn.Width} ai={_engineBtn.Width}(\"{_engineBtn.Text}\") " +
+                  $"set={_settingsBtn.Width}(\"{_settingsBtn.Text}\") " +
+                  $"edge={edge} clip={(edge > bar ? "YES" : "no")} " +
+                  $"tabsOk={(tabs >= room ? "yes" : "NO")}");
     }
 
     /// <summary>96 dpi 基準の値を、いまの画面の画素数に直す。</summary>
@@ -375,6 +419,7 @@ internal sealed class MainForm : Form
         _splitter.MinSize = Scale(120);
         _splitter.MinExtra = Scale(360);
         _tabStrip.Padding = new Padding(Scale(8), 0, 0, 0);
+        _topRight.Padding = new Padding(0, Scale(5), Scale(8), 0);
         LayoutTabs();
 
         // メニューの字は作った時点の拡大率で実体が固まる。作り直す。
@@ -395,12 +440,12 @@ internal sealed class MainForm : Form
     {
         var menu = DarkMenu.Create(DeviceDpi);
 
-        var undo = DarkMenu.Item("元に戻す", () => { if (_omni.CanUndo) _omni.Undo(); });
-        var cut = DarkMenu.Item("切り取り", () => _omni.Cut());
-        var copy = DarkMenu.Item("コピー", () => _omni.Copy());
-        var paste = DarkMenu.Item("貼り付け", () => _omni.Paste());
-        var del = DarkMenu.Item("削除", () => { if (_omni.SelectionLength > 0) _omni.SelectedText = ""; });
-        var all = DarkMenu.Item("すべて選択", () => _omni.SelectAll());
+        var undo = DarkMenu.Item(Strings.Undo, () => { if (_omni.CanUndo) _omni.Undo(); });
+        var cut = DarkMenu.Item(Strings.Cut, () => _omni.Cut());
+        var copy = DarkMenu.Item(Strings.Copy, () => _omni.Copy());
+        var paste = DarkMenu.Item(Strings.Paste, () => _omni.Paste());
+        var del = DarkMenu.Item(Strings.Delete, () => { if (_omni.SelectionLength > 0) _omni.SelectedText = ""; });
+        var all = DarkMenu.Item(Strings.SelectAll, () => _omni.SelectAll());
 
         menu.Items.AddRange(new ToolStripItem[]
         {
@@ -541,7 +586,7 @@ internal sealed class MainForm : Form
 
     private void UpdateChrome()
     {
-        _engineBtn.Text = _engine?.Name ?? "AI 選択";
+        _engineBtn.Text = _engine?.Name ?? Strings.PickAi;
         _settingsBtn.ForeColor = _settingsOpen ? Theme.Accent : Theme.Text;
 
         // 利用者が打ち込んでいる最中だけ自動更新を止める（フォーカスの有無では判定しない。
@@ -699,7 +744,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or WebView2RuntimeNotFoundException)
         {
-            MessageBox.Show($"ページを開けませんでした。\n\n{ex.Message}", App.Name,
+            MessageBox.Show(Strings.PageOpenFailed(ex.Message), App.Name,
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             tab.Url = null;
         }
@@ -973,7 +1018,7 @@ internal sealed class MainForm : Form
     private void ShowStart(BrowserTab tab)
     {
         tab.Url = null;
-        tab.Title = "新しいタブ";
+        tab.Title = Strings.NewTab;
         Render();
     }
 
@@ -1114,6 +1159,14 @@ internal sealed class MainForm : Form
                 _settings.Save();
                 return;
 
+            case "setLanguage":
+                _settings.Language = Str("value") == "en" ? "en" : "ja";
+                _settings.Save();
+                Strings.Use(_settings.Language);
+                ApplyStrings();
+                Render();
+                return;
+
             case "setEngine":
                 _engine = Engines.ById(Str("value"));
                 if (_settings.RememberEngine) _settings.EngineId = _engine?.Id;
@@ -1175,7 +1228,7 @@ internal sealed class MainForm : Form
 
         using var dlg = new SaveFileDialog
         {
-            Title = "保存先",
+            Title = Strings.SaveTo,
             FileName = name,
             InitialDirectory = PreferredDownloadDir(),
             OverwritePrompt = true,
@@ -1206,7 +1259,7 @@ internal sealed class MainForm : Form
     {
         using var dlg = new FolderBrowserDialog
         {
-            Description = "ダウンロードの保存先",
+            Description = Strings.DownloadFolder,
             UseDescriptionForTitle = true,
             SelectedPath = PreferredDownloadDir(),
         };
@@ -1247,8 +1300,8 @@ internal sealed class MainForm : Form
         if (target.HasLinkUri && UrlHelper.IsNavigable(target.LinkUri))
         {
             var link = target.LinkUri;
-            menu.Items.Add(DarkMenu.Item("リンクを新しいタブで開く", () => OpenInNewTab(link)));
-            menu.Items.Add(DarkMenu.Item("リンクアドレスをコピー", () => SetClipboard(link)));
+            menu.Items.Add(DarkMenu.Item(Strings.OpenLinkInNewTab, () => OpenInNewTab(link)));
+            menu.Items.Add(DarkMenu.Item(Strings.CopyLinkAddress, () => SetClipboard(link)));
         }
 
         // 画像のときだけ、WebView2 の既定コマンドを借りる経路に入る。
@@ -1274,12 +1327,12 @@ internal sealed class MainForm : Form
             if (target.HasSourceUri)
             {
                 var src = target.SourceUri;
-                menu.Items.Add(DarkMenu.Item("画像を開く", () => OpenInNewTab(src)));
+                menu.Items.Add(DarkMenu.Item(Strings.OpenImage, () => OpenInNewTab(src)));
             }
 
-            Borrow("saveImageAs", "画像を保存");
-            Borrow("copyImage", "画像をコピー");
-            Borrow("copyImageLocation", "画像アドレスをコピー");
+            Borrow("saveImageAs", Strings.SaveImage);
+            Borrow("copyImage", Strings.CopyImage);
+            Borrow("copyImageLocation", Strings.CopyImageAddress);
 
             // 既定コマンドが 1 つも借りられなかったときの保険。
             // 自前で出せるのはアドレスのコピーだけ（URL を持っていれば）。
@@ -1288,7 +1341,7 @@ internal sealed class MainForm : Form
                 if (target.HasSourceUri)
                 {
                     var src = target.SourceUri;
-                    menu.Items.Add(DarkMenu.Item("画像アドレスをコピー", () => SetClipboard(src)));
+                    menu.Items.Add(DarkMenu.Item(Strings.CopyImageAddress, () => SetClipboard(src)));
                 }
                 Log.Write($"  no image commands among: {DefaultCommandNames(e)}");
             }
@@ -1298,26 +1351,26 @@ internal sealed class MainForm : Form
         {
             var text = sel;
             var label = text.Length > 18 ? text[..18] : text;
-            menu.Items.Add(DarkMenu.Item("コピー", () => SetClipboard(text)));
-            menu.Items.Add(DarkMenu.Item($"「{label}」を検索", () => Submit(text)));
+            menu.Items.Add(DarkMenu.Item(Strings.Copy, () => SetClipboard(text)));
+            menu.Items.Add(DarkMenu.Item(Strings.SearchFor(label), () => Submit(text)));
         }
 
         if (target.IsEditable)
         {
             var text = sel;
-            menu.Items.Add(DarkMenu.Item("切り取り", () => Cut(core, text), !string.IsNullOrEmpty(text)));
-            menu.Items.Add(DarkMenu.Item("貼り付け", () => Paste(core)));
+            menu.Items.Add(DarkMenu.Item(Strings.Cut, () => Cut(core, text), !string.IsNullOrEmpty(text)));
+            menu.Items.Add(DarkMenu.Item(Strings.Paste, () => Paste(core)));
         }
 
         Separator(menu);
-        menu.Items.Add(DarkMenu.Item("戻る", () => core.GoBack(), core.CanGoBack));
-        menu.Items.Add(DarkMenu.Item("進む", () => core.GoForward(), core.CanGoForward));
-        menu.Items.Add(DarkMenu.Item("再読み込み", () => core.Reload()));
-        menu.Items.Add(DarkMenu.Item("このページのアドレスをコピー", () => SetClipboard(core.Source)));
+        menu.Items.Add(DarkMenu.Item(Strings.Back, () => core.GoBack(), core.CanGoBack));
+        menu.Items.Add(DarkMenu.Item(Strings.Forward, () => core.GoForward(), core.CanGoForward));
+        menu.Items.Add(DarkMenu.Item(Strings.Reload, () => core.Reload()));
+        menu.Items.Add(DarkMenu.Item(Strings.CopyPageAddress, () => SetClipboard(core.Source)));
         Separator(menu);
-        menu.Items.Add(DarkMenu.Item("新しいタブ", NewTab));
-        menu.Items.Add(DarkMenu.Item("ホーム", GoHome));
-        menu.Items.Add(DarkMenu.Item("設定", ToggleSettings));
+        menu.Items.Add(DarkMenu.Item(Strings.NewTab, NewTab));
+        menu.Items.Add(DarkMenu.Item(Strings.Home, GoHome));
+        menu.Items.Add(DarkMenu.Item(Strings.Settings, ToggleSettings));
 
         // Deferral を取るのは最後。取った後の行で例外が出ると Complete されないまま残り、
         // WebView2 が永久に待つ。ここまで来ればもう何も失敗しない。

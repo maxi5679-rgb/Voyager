@@ -18,8 +18,7 @@ internal sealed record ImportResult(
     int Folders, int Links, int SkippedEmptyFolders, int BadDates, int Icons, int ToBar = 0)
 {
     public override string ToString() =>
-        $"フォルダ {Folders} / リンク {Links} / 空フォルダ除外 {SkippedEmptyFolders} / 日時不明 {BadDates} / アイコン {Icons}"
-        + (ToBar > 0 ? $" / バーへ {ToBar}" : "");
+        Strings.ImportSummary(Folders, Links, SkippedEmptyFolders, BadDates, Icons, ToBar);
 }
 
 /// <summary>

@@ -151,7 +151,8 @@ internal sealed class BookmarkBar : Panel
     }
 
     /// <summary>ファビコンだけで分かるものは題名を省く、ということはしない。Chrome と同じで題名は出す。</summary>
-    private static string Label(BookmarkNode n) => n.Title.Replace("\r", " ").Replace("\n", " ").Trim();
+    private static string Label(BookmarkNode n) =>
+        Strings.FolderName(n.Title).Replace("\r", " ").Replace("\n", " ").Trim();
 
     // ---------------------------------------------------------------- 描画
 
@@ -167,7 +168,7 @@ internal sealed class BookmarkBar : Panel
 
         if (_items.Count == 0)
         {
-            TextRenderer.DrawText(g, "右クリックで、いま開いているページをここに追加できます",
+            TextRenderer.DrawText(g, Strings.BarEmptyHint,
                 ItemFont, new Rectangle(PadX, 0, Width - PadX * 2, Height - 1), Theme.Muted,
                 TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine |
                 TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
@@ -336,7 +337,7 @@ internal sealed class BookmarkBar : Panel
     {
         if (children.Count == 0)
         {
-            into.Add(DarkMenu.Item("(空)", () => { }, enabled: false));
+            into.Add(DarkMenu.Item(Strings.MenuEmpty, () => { }, enabled: false));
             return;
         }
 
@@ -349,7 +350,7 @@ internal sealed class BookmarkBar : Panel
             {
                 var sub = new ToolStripMenuItem(shown);
                 // 深く潜りすぎるメニューは操作できない。5 段で止めて、その先はサイドバーに任せる。
-                if (depth >= 5) sub.DropDownItems.Add(DarkMenu.Item("…（サイドバーで開く）", () => { }, enabled: false));
+                if (depth >= 5) sub.DropDownItems.Add(DarkMenu.Item(Strings.MenuTooDeep, () => { }, enabled: false));
                 else Fill(sub.DropDownItems, _store.Children(c.Id), depth + 1);
                 Whole(sub, full, shown);
                 into.Add(sub);
@@ -371,21 +372,21 @@ internal sealed class BookmarkBar : Panel
         if (node.IsLink)
         {
             var url = node.Url ?? "";
-            menu.Items.Add(DarkMenu.Item("開く", () => OpenRequested?.Invoke(url, false),
+            menu.Items.Add(DarkMenu.Item(Strings.Open, () => OpenRequested?.Invoke(url, false),
                                          !string.IsNullOrWhiteSpace(url)));
-            menu.Items.Add(DarkMenu.Item("新しいタブで開く", () => OpenRequested?.Invoke(url, true),
+            menu.Items.Add(DarkMenu.Item(Strings.OpenInNewTab, () => OpenRequested?.Invoke(url, true),
                                          !string.IsNullOrWhiteSpace(url)));
             menu.Items.Add(new ToolStripSeparator());
         }
 
         var i = _items.IndexOf(node);
-        menu.Items.Add(DarkMenu.Item("左へ", () => Shift(node, -1), i > 0));
-        menu.Items.Add(DarkMenu.Item("右へ", () => Shift(node, +1), i >= 0 && i < _items.Count - 1));
+        menu.Items.Add(DarkMenu.Item(Strings.MoveLeft, () => Shift(node, -1), i > 0));
+        menu.Items.Add(DarkMenu.Item(Strings.MoveRight, () => Shift(node, +1), i >= 0 && i < _items.Count - 1));
         menu.Items.Add(new ToolStripSeparator());
         if (node.IsLink && !string.IsNullOrEmpty(node.Icon))
-            menu.Items.Add(DarkMenu.Item("アイコンを消す", () => ClearIcon(node)));
-        menu.Items.Add(DarkMenu.Item("未整理へ移す", () => MoveToOther(node)));
-        menu.Items.Add(DarkMenu.Item("バーから削除", () => RemoveFromBar(node)));
+            menu.Items.Add(DarkMenu.Item(Strings.ClearIcon, () => ClearIcon(node)));
+        menu.Items.Add(DarkMenu.Item(Strings.MoveToUnsorted, () => MoveToOther(node)));
+        menu.Items.Add(DarkMenu.Item(Strings.RemoveFromBar, () => RemoveFromBar(node)));
         Popup(menu, at);
     }
 
@@ -394,8 +395,8 @@ internal sealed class BookmarkBar : Panel
         var menu = DarkMenu.Create(DeviceDpi);
         var page = CurrentPageRequested?.Invoke();
         var canAdd = !string.IsNullOrWhiteSpace(page?.Url);
-        menu.Items.Add(DarkMenu.Item("このページを追加", AddCurrentPage, canAdd));
-        menu.Items.Add(DarkMenu.Item("フォルダを作る", AddFolder));
+        menu.Items.Add(DarkMenu.Item(Strings.AddThisPage, AddCurrentPage, canAdd));
+        menu.Items.Add(DarkMenu.Item(Strings.NewFolder, AddFolder));
         Popup(menu, at);
     }
 
@@ -416,7 +417,7 @@ internal sealed class BookmarkBar : Panel
     private void AddFolder()
     {
         // 名前を聞く画面はまだ無い。既定の名前で作って、名前はサイドバーの F2 で変えてもらう。
-        _store.AddFolder(BookmarkStore.RootBar, "新しいフォルダ");
+        _store.AddFolder(BookmarkStore.RootBar, Strings.NewFolderName);
         Commit();
     }
 
@@ -452,8 +453,8 @@ internal sealed class BookmarkBar : Panel
         {
             var n = _store.CountLinks(node.Id);
             if (n > 0 && MessageBox.Show(
-                    $"「{node.Title}」の中の {n:N0} 件も一緒に消えます。よろしいですか。",
-                    "ブックマークの削除", MessageBoxButtons.OKCancel,
+                    Strings.DeleteFolderWarning(node.Title, n),
+                    Strings.DeleteBookmark, MessageBoxButtons.OKCancel,
                     MessageBoxIcon.Warning) != DialogResult.OK) return;
         }
         _store.Remove(node.Id);

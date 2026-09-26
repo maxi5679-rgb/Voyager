@@ -6,7 +6,7 @@ internal sealed class BrowserTab
 {
     public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
 
-    public string Title { get; set; } = "新しいタブ";
+    public string Title { get; set; } = Strings.NewTab;
 
     /// <summary>null なら内部ページ（スタート画面）を表示している。</summary>
     public string? Url { get; set; }
