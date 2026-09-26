@@ -23,12 +23,30 @@
   <?define Stage = "." ?>
   <?endif?>
 
+  <!--
+    パッケージの言語。Windows Installer 自身が出す文言（進行状況に流れる
+    ActionText、エラー表）はここで決まり、実行時には変えられない。
+    だから言語ごとに 1 本ずつ焼く:
+
+      wix build -d Lang=1033 ... -o Voyager-x.y.z-x64.msi      （既定 / 英語）
+      wix build -d Lang=1041 ... -o Voyager-x.y.z-x64-ja.msi   （日本語）
+
+    ウィザードの文言（こちらが書いた分）はこれとは別で、UILANG が決める。
+    つまり MSI の言語 = Windows 由来の文言、UILANG = 自前の文言。
+
+    Codepage は 1033 でも 932 のまま。T_ プロパティの既定値が日本語なので、
+    1252 にすると文字が落ちる。932 は ASCII も日本語も表せる。
+  -->
+  <?ifndef Lang ?>
+  <?define Lang = "1033" ?>
+  <?endif?>
+
   <Package Name="Voyager"
            Manufacturer="K-S System"
            Version="$(Ver)"
            UpgradeCode="DCD34823-C2C2-49D4-ADD5-F5641FCB401D"
            Scope="perUser"
-           Language="1041"
+           Language="$(Lang)"
            Codepage="932"
            Compressed="yes"
            InstallerVersion="500">
@@ -43,7 +61,7 @@
     -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
                   Schedule="afterInstallExecute"
-                  DowngradeErrorMessage="より新しい Voyager がすでにインストールされています。" />
+                  DowngradeErrorMessage="A newer version of Voyager is already installed. / より新しい Voyager がすでにインストールされています。" />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="VoyagerIcon" SourceFile="Voyager.ico" />
@@ -61,6 +79,94 @@
     <!-- ウィザードのチェックボックス（既定は両方 ON。/qn の無人インストールでも同じ） -->
     <Property Id="DESKTOPSHORTCUT" Value="1" Secure="yes" />
     <Property Id="LAUNCHAPP" Value="1" Secure="yes" />
+
+    <!--
+      ウィザードを出す言語。既定は "auto" で、そのとき Windows の表示言語に従う。
+
+      SystemLanguageID を直接見ないのは、コマンドラインから上書きできないため。
+      Windows Installer は渡された公開プロパティ名を全部大文字に畳むので、
+      msiexec に SystemLanguageID=1033 と書いても SYSTEMLANGUAGEID という
+      別のプロパティが増えるだけで、本物（1041）はそのまま残る。
+
+      UILANG なら外から指定できる:
+        msiexec /i Voyager-x.y.z-x64.msi UILANG=1033
+    -->
+    <Property Id="UILANG" Value="auto" Secure="yes" />
+    <SetProperty Id="UILANG" Value="[SystemLanguageID]" After="CostFinalize"
+                 Condition="UILANG = &quot;auto&quot;" />
+
+    <!--
+      ===================== ウィザードの文字 =====================
+
+      既定は日本語。日本語以外の Windows でだけ英語に差し替える。
+      SystemLanguageID は Windows Installer が GetSystemDefaultLangID() で
+      自動的に入れてくれる組み込みプロパティ（日本語 Windows なら 1041）。
+
+      MSI を言語ごとに 2 本へ割らずに済むので、後から「日本語版パッチ」も
+      「英語版パッチ」も当てる必要がない。1 本の中に両方入っている。
+
+      [ProductVersion] や [INSTALLFOLDER] はここには入れない。入れ子の
+      プロパティ参照は展開されないおそれがあるので、Text 側で外に出してある。
+    -->
+    <Property Id="T_SetupTitle"    Value="Voyager セットアップ" />
+    <Property Id="T_Tagline"       Value="V'Ger - WebView2 の AI ブラウザ" />
+    <Property Id="T_WelcomeBody"   Value="このパソコンの現在のユーザー用にインストールします。管理者権限は要りません。&#13;&#10;&#13;&#10;すでに古い版が入っている場合は、そのまま更新されます。設定とログイン状態は残ります。" />
+    <Property Id="T_Shortcut"      Value="デスクトップにショートカットを作る" />
+    <Property Id="T_InstallTo"     Value="インストール先: " />
+    <Property Id="T_Install"       Value="インストール" />
+    <Property Id="T_Cancel"        Value="キャンセル" />
+    <Property Id="T_Installing"    Value="Voyager をインストールしています" />
+    <Property Id="T_AMoment"       Value="少しだけ時間がかかります。" />
+    <Property Id="T_Preparing"     Value="準備しています..." />
+    <Property Id="T_Ready"         Value="準備ができました" />
+    <Property Id="T_InstalledBody" Value=" をインストールしました。スタートメニューからいつでも開けます。" />
+    <Property Id="T_Launch"        Value="Voyager を起動する" />
+    <Property Id="T_Removed"       Value="削除しました" />
+    <Property Id="T_RemovedBody"   Value="Voyager をこのパソコンから取り除きました。ログイン状態などの保存データは残してあります。" />
+    <Property Id="T_Finish"        Value="完了" />
+    <Property Id="T_Failed"        Value="完了できませんでした" />
+    <Property Id="T_FailedBody"    Value="インストールは取り消され、パソコンの状態は元のままです。Voyager を終了してから、もう一度お試しください。" />
+    <Property Id="T_Close"         Value="閉じる" />
+    <Property Id="T_Stopped"       Value="中止しました" />
+    <Property Id="T_StoppedBody"   Value="インストールは行われませんでした。" />
+    <Property Id="T_StopAsk"       Value="インストールを中止しますか。" />
+    <Property Id="T_StopYes"       Value="中止する" />
+    <Property Id="T_StopNo"        Value="続ける" />
+    <Property Id="T_Yes"           Value="はい" />
+    <Property Id="T_Abort"         Value="中止" />
+    <Property Id="T_Ignore"        Value="無視" />
+    <Property Id="T_No"            Value="いいえ" />
+    <Property Id="T_Retry"         Value="再試行" />
+
+    <SetProperty Id="T_SetupTitle"    Value="Voyager Setup" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Tagline"       Value="V'Ger - the WebView2 AI browser" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_WelcomeBody"   Value="Installs for the current user of this PC. No administrator rights are needed.&#13;&#10;&#13;&#10;If an older version is present it is simply updated. Your settings and sign-ins are kept." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Shortcut"      Value="Put a shortcut on the desktop" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_InstallTo"     Value="Installs to " After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Install"       Value="Install" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Cancel"        Value="Cancel" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Installing"    Value="Installing Voyager" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_AMoment"       Value="This takes a moment." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Preparing"     Value="Preparing..." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Ready"         Value="Ready to go" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_InstalledBody" Value=" is installed. You can open it from the Start menu whenever you like." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Launch"        Value="Start Voyager" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Removed"       Value="Removed" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_RemovedBody"   Value="Voyager has been removed from this PC. Your sign-ins and other saved data have been left in place." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Finish"        Value="Finish" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Failed"        Value="Could not finish" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_FailedBody"    Value="The installation was rolled back and the PC is as it was. Close Voyager and try again." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Close"         Value="Close" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Stopped"       Value="Stopped" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_StoppedBody"   Value="Nothing was installed." After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_StopAsk"       Value="Stop installing?" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_StopYes"       Value="Stop" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_StopNo"        Value="Keep going" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Yes"           Value="Yes" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Abort"         Value="Abort" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Ignore"        Value="Ignore" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_No"            Value="No" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
+    <SetProperty Id="T_Retry"         Value="Retry" After="SetUILANG"    Condition="UILANG &lt;&gt; 1041" />
 
     <!-- ===================== ファイル ===================== -->
 
@@ -153,46 +259,52 @@
 
       <!-- ===== ようこそ ===== -->
       <Dialog Id="WelcomeDlg" Width="370" Height="270"
-              Title="Voyager セットアップ" NoMinimize="yes">
+              Title="[T_SetupTitle]" NoMinimize="yes">
         <Control Id="Side" Type="Bitmap" X="0" Y="0" Width="122" Height="234"
                  TabSkip="no" Text="B.Side" />
         <Control Id="Title" Type="Text" X="135" Y="22" Width="220" Height="26"
                  NoPrefix="yes" Text="{\F.Title}Voyager [ProductVersion]" HideCondition="WIX_UPGRADE_DETECTED" />
-        <Control Id="TitleUp" Type="Text" X="135" Y="22" Width="220" Height="26"
-                 NoPrefix="yes" Hidden="yes" Text="{\F.Title}[ProductVersion] に更新" ShowCondition="WIX_UPGRADE_DETECTED" />
+        <!-- 語順が言語で逆になるぶんだけは、プロパティではなく Control を 2 つ重ねる。
+             Property/@Value に空文字が置けないため（WIX0006）。 -->
+        <Control Id="TitleUpJa" Type="Text" X="135" Y="22" Width="220" Height="26"
+                 NoPrefix="yes" Hidden="yes" Text="{\F.Title}[ProductVersion] に更新"
+                 ShowCondition="WIX_UPGRADE_DETECTED AND UILANG = 1041" />
+        <Control Id="TitleUpEn" Type="Text" X="135" Y="22" Width="220" Height="26"
+                 NoPrefix="yes" Hidden="yes" Text="{\F.Title}Update to [ProductVersion]"
+                 ShowCondition="WIX_UPGRADE_DETECTED AND UILANG &lt;&gt; 1041" />
         <Control Id="Sub" Type="Text" X="135" Y="50" Width="220" Height="14"
-                 NoPrefix="yes" Text="{\F.Small}V'Ger - WebView2 の AI ブラウザ" />
+                 NoPrefix="yes" Text="{\F.Small}[T_Tagline]" />
         <Control Id="Desc" Type="Text" X="135" Y="78" Width="220" Height="80"
                  NoPrefix="yes"
-                 Text="このパソコンの現在のユーザー用にインストールします。管理者権限は要りません。&#13;&#10;&#13;&#10;すでに古い版が入っている場合は、そのまま更新されます。設定とログイン状態は残ります。" />
+                 Text="[T_WelcomeBody]" />
         <Control Id="Shortcut" Type="CheckBox" X="135" Y="170" Width="220" Height="17"
                  Property="DESKTOPSHORTCUT" CheckBoxValue="1"
-                 Text="デスクトップにショートカットを作る" />
+                 Text="[T_Shortcut]" />
         <Control Id="Path" Type="Text" X="135" Y="192" Width="220" Height="26"
-                 NoPrefix="yes" Text="{\F.Small}インストール先: [INSTALLFOLDER]" />
+                 NoPrefix="yes" Text="{\F.Small}[T_InstallTo][INSTALLFOLDER]" />
         <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Install" Type="PushButton" X="222" Y="243" Width="70" Height="17"
-                 Default="yes" Text="インストール">
+                 Default="yes" Text="[T_Install]">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="300" Y="243" Width="56" Height="17"
-                 Cancel="yes" Text="キャンセル">
+                 Cancel="yes" Text="[T_Cancel]">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
         </Control>
       </Dialog>
 
       <!-- ===== 進行状況 ===== -->
       <Dialog Id="ProgressDlg" Width="370" Height="270"
-              Title="Voyager セットアップ" Modeless="yes" NoMinimize="yes">
+              Title="[T_SetupTitle]" Modeless="yes" NoMinimize="yes">
         <Control Id="Banner" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
                  TabSkip="no" Text="B.Banner" />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
         <Control Id="Title" Type="Text" X="20" Y="12" Width="280" Height="14"
-                 Transparent="yes" NoPrefix="yes" Text="{\F.Normal}Voyager をインストールしています" />
+                 Transparent="yes" NoPrefix="yes" Text="{\F.Normal}[T_Installing]" />
         <Control Id="Sub" Type="Text" X="20" Y="28" Width="280" Height="12"
-                 Transparent="yes" NoPrefix="yes" Text="{\F.Small}少しだけ時間がかかります。" />
+                 Transparent="yes" NoPrefix="yes" Text="{\F.Small}[T_AMoment]" />
         <Control Id="StatusLabel" Type="Text" X="20" Y="80" Width="330" Height="14"
-                 NoPrefix="yes" Text="準備しています..." />
+                 NoPrefix="yes" Text="[T_Preparing]" />
         <Control Id="ActionText" Type="Text" X="20" Y="98" Width="330" Height="14" NoPrefix="yes">
           <Subscribe Event="ActionText" Attribute="Text" />
         </Control>
@@ -202,31 +314,31 @@
         </Control>
         <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Cancel" Type="PushButton" X="300" Y="243" Width="56" Height="17"
-                 Cancel="yes" Text="キャンセル">
+                 Cancel="yes" Text="[T_Cancel]">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
         </Control>
       </Dialog>
 
       <!-- ===== 完了 ===== -->
       <Dialog Id="ExitDlg" Width="370" Height="270"
-              Title="Voyager セットアップ" NoMinimize="yes">
+              Title="[T_SetupTitle]" NoMinimize="yes">
         <Control Id="Side" Type="Bitmap" X="0" Y="0" Width="122" Height="234"
                  TabSkip="no" Text="B.Side" />
         <Control Id="Title" Type="Text" X="135" Y="30" Width="220" Height="26"
-                 NoPrefix="yes" Text="{\F.Title}準備ができました" HideCondition="Installed" />
+                 NoPrefix="yes" Text="{\F.Title}[T_Ready]" HideCondition="Installed" />
         <Control Id="Desc" Type="Text" X="135" Y="66" Width="220" Height="60"
                  NoPrefix="yes"
-                 Text="Voyager [ProductVersion] をインストールしました。スタートメニューからいつでも開けます。" HideCondition="Installed" />
+                 Text="Voyager [ProductVersion][T_InstalledBody]" HideCondition="Installed" />
         <Control Id="Launch" Type="CheckBox" X="135" Y="140" Width="220" Height="17"
-                 Property="LAUNCHAPP" CheckBoxValue="1" Text="Voyager を起動する" HideCondition="Installed" />
+                 Property="LAUNCHAPP" CheckBoxValue="1" Text="[T_Launch]" HideCondition="Installed" />
         <Control Id="TitleGone" Type="Text" X="135" Y="30" Width="220" Height="26"
-                 NoPrefix="yes" Hidden="yes" Text="{\F.Title}削除しました" ShowCondition="Installed" />
+                 NoPrefix="yes" Hidden="yes" Text="{\F.Title}[T_Removed]" ShowCondition="Installed" />
         <Control Id="DescGone" Type="Text" X="135" Y="66" Width="220" Height="70"
                  NoPrefix="yes" Hidden="yes"
-                 Text="Voyager をこのパソコンから取り除きました。ログイン状態などの保存データは残してあります。" ShowCondition="Installed" />
+                 Text="[T_RemovedBody]" ShowCondition="Installed" />
         <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Finish" Type="PushButton" X="290" Y="243" Width="66" Height="17"
-                 Default="yes" Cancel="yes" Text="完了">
+                 Default="yes" Cancel="yes" Text="[T_Finish]">
           <Publish Event="DoAction" Value="LaunchApplication"
                    Condition="LAUNCHAPP = 1 AND NOT Installed" />
           <Publish Event="EndDialog" Value="Return" />
@@ -235,75 +347,75 @@
 
       <!-- ===== 失敗 / 中止 ===== -->
       <Dialog Id="FatalErrorDlg" Width="370" Height="270"
-              Title="Voyager セットアップ" NoMinimize="yes">
+              Title="[T_SetupTitle]" NoMinimize="yes">
         <Control Id="Side" Type="Bitmap" X="0" Y="0" Width="122" Height="234"
                  TabSkip="no" Text="B.Side" />
         <Control Id="Title" Type="Text" X="135" Y="30" Width="220" Height="26"
-                 NoPrefix="yes" Text="{\F.Title}完了できませんでした" />
+                 NoPrefix="yes" Text="{\F.Title}[T_Failed]" />
         <Control Id="Desc" Type="Text" X="135" Y="66" Width="220" Height="80"
                  NoPrefix="yes"
-                 Text="インストールは取り消され、パソコンの状態は元のままです。Voyager を終了してから、もう一度お試しください。" />
+                 Text="[T_FailedBody]" />
         <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Finish" Type="PushButton" X="290" Y="243" Width="66" Height="17"
-                 Default="yes" Cancel="yes" Text="閉じる">
+                 Default="yes" Cancel="yes" Text="[T_Close]">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
       </Dialog>
 
       <Dialog Id="UserExitDlg" Width="370" Height="270"
-              Title="Voyager セットアップ" NoMinimize="yes">
+              Title="[T_SetupTitle]" NoMinimize="yes">
         <Control Id="Side" Type="Bitmap" X="0" Y="0" Width="122" Height="234"
                  TabSkip="no" Text="B.Side" />
         <Control Id="Title" Type="Text" X="135" Y="30" Width="220" Height="26"
-                 NoPrefix="yes" Text="{\F.Title}中止しました" />
+                 NoPrefix="yes" Text="{\F.Title}[T_Stopped]" />
         <Control Id="Desc" Type="Text" X="135" Y="66" Width="220" Height="60"
-                 NoPrefix="yes" Text="インストールは行われませんでした。" />
+                 NoPrefix="yes" Text="[T_StoppedBody]" />
         <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Finish" Type="PushButton" X="290" Y="243" Width="66" Height="17"
-                 Default="yes" Cancel="yes" Text="閉じる">
+                 Default="yes" Cancel="yes" Text="[T_Close]">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
       </Dialog>
 
       <!-- ===== キャンセル確認 ===== -->
       <Dialog Id="CancelDlg" Width="260" Height="85"
-              Title="Voyager セットアップ" NoMinimize="yes">
+              Title="[T_SetupTitle]" NoMinimize="yes">
         <Control Id="Text" Type="Text" X="20" Y="15" Width="222" Height="30"
-                 NoPrefix="yes" Text="インストールを中止しますか。" />
+                 NoPrefix="yes" Text="[T_StopAsk]" />
         <Control Id="Yes" Type="PushButton" X="72" Y="57" Width="56" Height="17"
-                 Text="中止する">
+                 Text="[T_StopYes]">
           <Publish Event="EndDialog" Value="Exit" />
         </Control>
         <Control Id="No" Type="PushButton" X="132" Y="57" Width="56" Height="17"
-                 Default="yes" Cancel="yes" Text="続ける">
+                 Default="yes" Cancel="yes" Text="[T_StopNo]">
           <Publish Event="EndDialog" Value="Return" />
         </Control>
       </Dialog>
 
       <!-- ===== エラー ===== -->
       <Dialog Id="ErrorDlg" Width="270" Height="110"
-              Title="Voyager セットアップ" ErrorDialog="yes" NoMinimize="yes">
+              Title="[T_SetupTitle]" ErrorDialog="yes" NoMinimize="yes">
         <Control Id="ErrorText" Type="Text" X="48" Y="15" Width="205" Height="60"
                  TabSkip="no" Text="Information text" />
-        <Control Id="Y" Type="PushButton" X="20"  Y="80" Width="42" Height="17" TabSkip="yes" Text="はい">
+        <Control Id="Y" Type="PushButton" X="20"  Y="80" Width="42" Height="17" TabSkip="yes" Text="[T_Yes]">
           <Publish Event="EndDialog" Value="ErrorYes" />
         </Control>
-        <Control Id="A" Type="PushButton" X="66"  Y="80" Width="56" Height="17" TabSkip="yes" Text="中止">
+        <Control Id="A" Type="PushButton" X="66"  Y="80" Width="56" Height="17" TabSkip="yes" Text="[T_Abort]">
           <Publish Event="EndDialog" Value="ErrorAbort" />
         </Control>
-        <Control Id="C" Type="PushButton" X="126" Y="80" Width="56" Height="17" TabSkip="yes" Text="キャンセル">
+        <Control Id="C" Type="PushButton" X="126" Y="80" Width="56" Height="17" TabSkip="yes" Text="[T_Cancel]">
           <Publish Event="EndDialog" Value="ErrorCancel" />
         </Control>
-        <Control Id="I" Type="PushButton" X="186" Y="80" Width="42" Height="17" TabSkip="yes" Text="無視">
+        <Control Id="I" Type="PushButton" X="186" Y="80" Width="42" Height="17" TabSkip="yes" Text="[T_Ignore]">
           <Publish Event="EndDialog" Value="ErrorIgnore" />
         </Control>
-        <Control Id="N" Type="PushButton" X="232" Y="80" Width="42" Height="17" TabSkip="yes" Text="いいえ">
+        <Control Id="N" Type="PushButton" X="232" Y="80" Width="42" Height="17" TabSkip="yes" Text="[T_No]">
           <Publish Event="EndDialog" Value="ErrorNo" />
         </Control>
         <Control Id="O" Type="PushButton" X="20"  Y="80" Width="42" Height="17" TabSkip="yes" Text="OK">
           <Publish Event="EndDialog" Value="ErrorOk" />
         </Control>
-        <Control Id="R" Type="PushButton" X="66"  Y="80" Width="56" Height="17" TabSkip="yes" Text="再試行">
+        <Control Id="R" Type="PushButton" X="66"  Y="80" Width="56" Height="17" TabSkip="yes" Text="[T_Retry]">
           <Publish Event="EndDialog" Value="ErrorRetry" />
         </Control>
       </Dialog>

@@ -77,15 +77,32 @@ copy /y "%~dp0installer\Voyager.ui.wxs" "%STAGE%\Voyager.ui.wxs"     >> "%LOG%" 
 echo. >> "%LOG%"
 echo [3] wix build %VER% >> "%LOG%"
 set "PATH=%PATH%;%USERPROFILE%\.dotnet\tools"
-wix build -arch x64 -d Ver=%VER% -d Stage=%STAGE% -b "%STAGE%" -o "%~dp0Voyager-%VER%-x64.msi" "%STAGE%\Voyager.ui.wxs" >> "%LOG%" 2>&1
+rem Two packages from the same source. Windows Installer bakes its own strings
+rem (the ActionText that scrolls on the progress page, the Error table) into the
+rem package at build time from Package/@Language, and nothing at run time can
+rem change them, so the only way to get both right is to build both.
+rem The plain name is English, matching README.md; -ja matches README.ja.md.
+rem The wizard text we wrote ourselves follows UILANG in either package.
+wix build -arch x64 -d Ver=%VER% -d Lang=1033 -d Stage=%STAGE% -b "%STAGE%" -o "%~dp0Voyager-%VER%-x64.msi" "%STAGE%\Voyager.ui.wxs" >> "%LOG%" 2>&1
 if errorlevel 1 (
-  echo [NG] wix build failed with exit code %ERRORLEVEL% >> "%LOG%"
+  echo [NG] wix build en failed with exit code %ERRORLEVEL% >> "%LOG%"
+  goto :fail
+)
+wix build -arch x64 -d Ver=%VER% -d Lang=1041 -d Stage=%STAGE% -b "%STAGE%" -o "%~dp0Voyager-%VER%-x64-ja.msi" "%STAGE%\Voyager.ui.wxs" >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo [NG] wix build ja failed with exit code %ERRORLEVEL% >> "%LOG%"
   goto :fail
 )
 if not exist "%~dp0Voyager-%VER%-x64.msi" (
   echo [NG] wix reported success but no MSI >> "%LOG%"
   goto :fail
 )
+if not exist "%~dp0Voyager-%VER%-x64-ja.msi" (
+  echo [NG] wix reported success but no -ja MSI >> "%LOG%"
+  goto :fail
+)
+powershell -NoProfile -Command ^
+  "Get-ChildItem '%~dp0Voyager-%VER%-x64*.msi' | ForEach-Object { '  built {0} ({1} MB)' -f $_.Name, [math]::Round($_.Length/1MB,1) }" >> "%LOG%" 2>&1
 
 rem --- debug.on and the app log now live in the app data folder, not in the
 rem     install folder: MSI cannot delete files it does not own, so a debug.on
