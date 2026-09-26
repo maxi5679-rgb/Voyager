@@ -181,7 +181,7 @@ internal static class Strings
     public static string LanguageHeading => T("言語 / Language", "Language / 言語");
     public static string LanguageNote =>
         T("ブックマークのフォルダ名（「ブックマーク バー」など）は表示だけ読み替えます。保存されている名前は変わりません。",
-          "Built-in folder names are only re-labelled on screen. The names stored in your bookmarks do not change.");
+          "Built-in folder names are only re-labeled on screen. The names stored in your bookmarks do not change.");
 
     public static string HomeHeading => T("ホーム", "Home");
     public static string HomeStart => T("スタート画面", "Start page");

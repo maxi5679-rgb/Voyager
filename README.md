@@ -54,7 +54,7 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
 - **Bookmarks** — a bar and a sidebar, with import and export of Netscape bookmark files
   (the format Chrome and Firefox both use). Favicons are fetched and cached
 - **Downloads** — a default folder you can set, or a prompt for every download
-- **Context menus** drawn by the app, in the app's own colours, including
+- **Context menus** drawn by the app, in the app's own colors, including
   save / copy / copy-address for images
 - **Per-monitor DPI**. Fonts, icons, row heights and menus all follow the display, and
   keep their size across 96 / 144 / 192 dpi and when a window moves between monitors
@@ -82,7 +82,7 @@ src/
   NetscapeBookmarks.cs  import and export of bookmark HTML
   Favicons.cs           favicon decoding and per-DPI cache
   Log.cs                debug log, with URLs redacted
-  Theme.cs / DarkMenu.cs  colours and menu styling
+  Theme.cs / DarkMenu.cs  colors and menu styling
 installer/Voyager.wxs   MSI definition
 build.cmd               build, package and install
 nextbuild.ps1           picks the next version number
@@ -157,7 +157,7 @@ you clicked.
 - Dragging tabs to reorder, restoring the last session
 - An English UI. The strings are still Japanese, written into the source
 
-## Licence
+## License
 
 Not decided yet. Until it is, treat this as source you can read rather than source you can
 reuse.
