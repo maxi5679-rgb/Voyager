@@ -1217,6 +1217,13 @@ internal sealed class MainForm : Form
         var host = Uri.TryCreate(a.DownloadOperation.Uri, UriKind.Absolute, out var from) ? from.Host : "?";
         Log.Write($"download: {host} name={name}");
 
+        // 「画像を保存」の見張りに、ちゃんと来たことを知らせる
+        if (_imageSaveAt != 0)
+        {
+            Log.Write($"  image save: download started after {Environment.TickCount64 - _imageSaveAt}ms");
+            _imageSaveAt = 0;
+        }
+
         if (!_settings.AskDownloadDir)
         {
             Log.Write($"  -> {Path.GetDirectoryName(a.ResultFilePath)}");
@@ -1297,6 +1304,21 @@ internal sealed class MainForm : Form
 
         var menu = DarkMenu.Create(DeviceDpi);
 
+        // ---- 画像保存が黙って何もしない件の計測 ----
+        // 仮説：Chromium の saveImageAs / copyImage は、実行する瞬間に右クリックした
+        // 座標をもう一度拾い直す（SaveImageAt(x, y)）。メニューを選ぶ間にマウスが画像を
+        // 離れてホバーの覆いが変わる、カルーセルが送られる、レイアウトがずれる、などで
+        // 座標の下が画像でなくなっていると、何も起きない。
+        // 開いた瞬間と選んだ瞬間の両方で座標の下を調べ、食い違いを見る。
+        var openedAt = Environment.TickCount64;
+        var point = e.Location;
+        var isImage = target.Kind == CoreWebView2ContextMenuTargetKind.Image;
+        if (isImage)
+        {
+            Log.Write($"  image: frame={(target.IsRequestedForMainFrame ? "main" : "sub")} src={SrcSummary(target)}");
+            _ = ProbeAtPoint(core, point, "at-open");
+        }
+
         if (target.HasLinkUri && UrlHelper.IsNavigable(target.LinkUri))
         {
             var link = target.LinkUri;
@@ -1309,6 +1331,7 @@ internal sealed class MainForm : Form
         // 全部見直すことになるうえ、設定した保存先も通らない。既定を呼べば全部そのまま効く。
         var borrowed = false;
         var pick = -1;
+        var pickName = "";
 
         // WebView2 の既定コマンドを、こちらのメニューの項目として借りる。
         // 対象（どの画像か）は向こうが覚えているので、こちらが SourceUri を
@@ -1318,7 +1341,7 @@ internal sealed class MainForm : Form
             var id = DefaultCommandId(e, name);
             if (id < 0) return;
             borrowed = true;
-            menu.Items.Add(DarkMenu.Item(label, () => pick = id));
+            menu.Items.Add(DarkMenu.Item(label, () => { pick = id; pickName = name; }));
         }
 
         if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
@@ -1389,8 +1412,19 @@ internal sealed class MainForm : Form
                 {
                     if (pick >= 0)
                     {
+                        // 渡す直前に座標の下をもう一度見る。Chromium が拾い直すのとほぼ同じ瞬間。
+                        var held = Environment.TickCount64 - openedAt;
+                        _ = ProbeAtPoint(core, point, "at-select");
+
                         e.SelectedCommandId = pick;
-                        Log.Write($"  default command {pick} selected");
+                        Log.Write($"  default command {pick} ({pickName}) selected held={held}ms");
+
+                        if (pickName == "saveImageAs")
+                        {
+                            var at = Environment.TickCount64;
+                            _imageSaveAt = at;
+                            WatchImageSave(at, $"held={held}ms");
+                        }
                     }
                 }
                 catch (Exception ex) { Log.Write($"!! select command failed: {ex.GetType().Name} {ex.Message}"); }
@@ -1424,6 +1458,86 @@ internal sealed class MainForm : Form
     {
         try { return string.Join(",", e.MenuItems.Select(m => m.Name)); }
         catch (Exception ex) { return $"({ex.GetType().Name})"; }
+    }
+
+    // ---------------------------------------------------------------- 画像保存の計測
+
+    /// <summary>「画像を保存」を渡した時刻。0 なら見張っていない。</summary>
+    private long _imageSaveAt;
+
+    /// <summary>
+    /// 画像の出どころを「スキーム ホスト」だけに縮めて返す。
+    /// パスは残さない。画像 CDN はパスそのものに使い捨ての鍵を埋めてくる。
+    /// blob: と data: はそれ自体が手掛かりなので、スキームだけ出す。
+    /// </summary>
+    private static string SrcSummary(CoreWebView2ContextMenuTarget t)
+    {
+        if (!t.HasSourceUri) return "none";
+        var s = t.SourceUri;
+        if (s.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return "data";
+        if (s.StartsWith("blob:", StringComparison.OrdinalIgnoreCase)) return "blob";
+        return Uri.TryCreate(s, UriKind.Absolute, out var u) ? $"{u.Scheme} {u.Host}" : "?";
+    }
+
+    /// <summary>
+    /// 右クリックした座標の下に、いま何があるかをページに訊いて記録する。
+    ///
+    /// 開いたときと選んだときの 2 回呼ぶ。Chromium の saveImageAs は実行時に座標を
+    /// 拾い直すので、2 回目が IMG でなければ、それが黙って失敗する理由になる。
+    /// 待たずに投げっぱなしにするのは、選んだ瞬間の状態を見たいから（待つと遅れる）。
+    ///
+    /// 主フレームしか見えない。画像が iframe の中なら、ここには IFRAME と出る。
+    /// </summary>
+    private static async Task ProbeAtPoint(CoreWebView2? core, Point p, string when)
+    {
+        if (core is null) return;
+        try
+        {
+            // e.Location が CSS ピクセルか物理ピクセルか確信が無い（96 dpi なら同じ、
+            // 144 / 192 だとずれる）。両方の解釈で突いて並べる。開いた瞬間は Chromium が
+            // 「画像」と言っているので、そのとき IMG を返した方が正しい座標系だと分かる。
+            var js = $$"""
+                (() => {
+                  const at = (x, y) => {
+                    const el = document.elementFromPoint(x, y);
+                    if (!el) return 'none';
+                    let s = el.tagName;
+                    const c = typeof el.className === 'string' ? el.className.trim().split(/\s+/)[0] : '';
+                    if (c) s += '.' + c.slice(0, 24);
+                    if (el.tagName === 'IMG') {
+                      try {
+                        const u = new URL(el.currentSrc || el.src);
+                        s += ' ' + u.protocol.replace(':', '') + ' ' + u.host + ' ' + el.naturalWidth + 'x' + el.naturalHeight;
+                      } catch { s += ' ?'; }
+                    }
+                    return s;
+                  };
+                  const r = devicePixelRatio || 1;
+                  const raw = at({{p.X}}, {{p.Y}});
+                  if (r === 1) return raw + ' dpr=1';
+                  return 'raw=' + raw + ' | scaled=' + at({{p.X}} / r, {{p.Y}} / r) + ' dpr=' + r;
+                })()
+                """;
+            var raw = await core.ExecuteScriptAsync(js);
+            var text = System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? raw;
+            Log.Write($"  {when}: {text} ({p.X},{p.Y})");
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"  {when}: probe failed {ex.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// 「画像を保存」を渡してから 3 秒、DownloadStarting が来るかを見張る。
+    /// いまは「起きなかった」ことがログに残らず、後から数えようがない。それを残す。
+    /// </summary>
+    private async void WatchImageSave(long startedAt, string info)
+    {
+        await Task.Delay(3000);
+        if (_imageSaveAt != startedAt) return;   // 来た、または次の保存で上書きされた
+        _imageSaveAt = 0;
+        Log.Write($"image save: NO download within 3s ({info})");
     }
 
     /// <summary>

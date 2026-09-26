@@ -122,7 +122,9 @@ echo [4] install %VER% (wizard) >> "%LOG%"
 rem start /wait so the script really waits for msiexec to finish.
 rem Plain "msiexec" can hand off to a second process and return early,
 rem which is why rebuild8 never wrote its RESULT line.
-start "" /wait msiexec /i "%~dp0Voyager-%VER%-x64.msi" /l*v "%~dp0msi-install-log.txt"
+rem Anything passed to this script goes on to msiexec, e.g.
+rem   build.cmd UILANG=1033     shows the wizard in English on a Japanese Windows
+start "" /wait msiexec /i "%~dp0Voyager-%VER%-x64.msi" /l*v "%~dp0msi-install-log.txt" %*
 set "RC=%ERRORLEVEL%"
 
 rem RESULT goes in FIRST, before anything that could stall, so the log always
