@@ -2,14 +2,17 @@
 <!--
   Voyager - Windows インストーラー（GUI 版 / WiX Toolset v4-v6 スキーマ）
 
-    wix build -arch x64 -d Ver=1.0.12 -b <stage> -o Voyager-1.0.12-x64.msi Voyager.ui.wxs
+  build.cmd が次の 2 回を回す（手で叩くことはまず無い）:
 
-  同じフォルダに Voyager.exe / WebView2Loader.dll / Voyager.ico /
-  side.bmp / banner.bmp を置いてから実行する。
+    wix build -arch x64 -d Ver=x.y.z -d Lang=1033 -d Stage=<stage> -b <stage> -o Voyager-x.y.z-x64.msi    Voyager.ui.wxs
+    wix build -arch x64 -d Ver=x.y.z -d Lang=1041 -d Stage=<stage> -b <stage> -o Voyager-x.y.z-x64-ja.msi Voyager.ui.wxs
+
+  <stage> には build.cmd が Voyager.exe / WebView2Loader.dll / Voyager.ico /
+  side.bmp / banner.bmp と publish\ 一式を並べておく。
 
   ウィザードは自前で組んである（WixUI 拡張は使わない）:
     ようこそ → 進行状況 → 完了
-  これで日本語も配色も完全に制御できる。
+  だから画面の文字は全部こちらのもので、日英の切り替えも配色も完全に制御できる。
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 

@@ -79,7 +79,8 @@ src/
   Favicons.cs           ファビコンの復元と拡大率ごとのキャッシュ
   Log.cs                デバッグログ（URL は伏せる）
   Theme.cs / DarkMenu.cs  配色とメニューの見た目
-installer/Voyager.wxs   MSI 定義
+installer/Voyager.ui.wxs  MSI 定義（ファイル・ウィザード・日英両方の文言）
+installer/ui/           ウィザードの横と上の絵
 build.cmd               ビルド・パッケージ・インストール
 nextbuild.ps1           次のバージョン番号を決める
 ```
@@ -92,14 +93,27 @@ Windows、.NET 10 SDK と WiX が要る。
 build.cmd
 ```
 
-self-contained の win-x64 で publish し、stage して MSI を作り、そのままインストーラを起動する。
-経過は `make-log.txt` に出る。バージョン番号は `nextbuild.ps1` が決める。レジストリ、インストール
-済みの exe、`buildno.txt`、フォルダ内の成果物を見て、見つかった最大値 + 1 を取るので、フォルダを
+self-contained の win-x64 で publish し、stage して、同じソースから MSI を 2 本作り、英語版の方の
+インストーラを起動する。経過は `make-log.txt` に出る。`build.cmd` に渡した引数はそのまま
+インストーラへ流れるので、`build.cmd UILANG=1033` とすれば日本語 Windows でも英語のウィザードが見られる。
+
+バージョン番号は `nextbuild.ps1` が決める。レジストリ、インストール済みの exe、`buildno.txt`、フォルダ内の成果物を見て、見つかった最大値 + 1 を取るので、フォルダを
 掃除しても番号が巻き戻らない。
 
 ## インストール
 
-MSI はユーザー単位インストールなので UAC は出ない。
+インストーラは 2 本ある。中身は同じで、違うのは Windows Installer 自身が出す文言
+（進行状況に流れる説明など）の言語だけ。
+
+| | |
+|---|---|
+| `Voyager-x.y.z-x64.msi` | English |
+| `Voyager-x.y.z-x64-ja.msi` | 日本語 |
+
+ウィザードの文言そのものは、どちらでも Windows の表示言語に従う。決め打ちしたいときは
+`UILANG` を渡す。英語なら `msiexec /i Voyager-x.y.z-x64-ja.msi UILANG=1033`、日本語なら `UILANG=1041`。
+
+どちらもユーザー単位インストールなので UAC は出ない。
 
 - インストール先: `%LOCALAPPDATA%\Programs\Voyager`
 - ショートカット: デスクトップ / スタートメニュー
@@ -150,7 +164,7 @@ WebView2 が要る。Windows 11 と更新済みの Windows 10 なら既に入っ
   `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a <msi>`
 - 履歴とダウンロード一覧
 - タブのドラッグ並び替え、セッション復元
-- 英語 UI。画面の文字はまだ日本語がソースに直書き
+- 表示言語を Windows に自動で合わせる。今は設定画面で選ぶ
 
 ## ライセンス
 

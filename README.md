@@ -83,7 +83,8 @@ src/
   Favicons.cs           favicon decoding and per-DPI cache
   Log.cs                debug log, with URLs redacted
   Theme.cs / DarkMenu.cs  colors and menu styling
-installer/Voyager.wxs   MSI definition
+installer/Voyager.ui.wxs  MSI definition: files, the wizard, and its text in both languages
+installer/ui/           the wizard's side and banner bitmaps
 build.cmd               build, package and install
 nextbuild.ps1           picks the next version number
 ```
@@ -96,15 +97,30 @@ Windows, with the .NET 10 SDK and WiX:
 build.cmd
 ```
 
-It publishes self-contained win-x64, stages the output, builds the MSI and then runs the
-installer. Progress goes to `make-log.txt`. The version number is chosen by `nextbuild.ps1`,
-which takes the highest number it can find — in the registry, in the installed executable, in
+It publishes self-contained win-x64, stages the output, builds two MSIs from the same source
+and then runs the English one. Progress goes to `make-log.txt`. Anything you pass to
+`build.cmd` is handed on to the installer, so `build.cmd UILANG=1033` shows the wizard in
+English even on a Japanese Windows.
+
+The version number is chosen by `nextbuild.ps1`, which takes the highest number it can find — in the registry, in the installed executable, in
 `buildno.txt` and among the artifacts in the folder — and adds one, so cleaning the folder
 cannot make the version go backwards.
 
 ## Installing
 
-The MSI installs per user, so it never asks for elevation.
+There are two installers. They are the same program; what differs is the language of the
+text Windows Installer itself shows, such as the progress messages.
+
+| | |
+|---|---|
+| `Voyager-x.y.z-x64.msi` | English |
+| `Voyager-x.y.z-x64-ja.msi` | Japanese / 日本語 |
+
+The wizard's own text follows the Windows display language in either one. To force it, pass
+`UILANG`: `msiexec /i Voyager-x.y.z-x64.msi UILANG=1033` for English, `UILANG=1041` for
+Japanese.
+
+Both install per user, so neither asks for elevation.
 
 - Installed to `%LOCALAPPDATA%\Programs\Voyager`
 - Shortcuts on the desktop and in the Start menu
@@ -155,7 +171,7 @@ you clicked.
   `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a <msi>`
 - History and a downloads list
 - Dragging tabs to reorder, restoring the last session
-- An English UI. The strings are still Japanese, written into the source
+- Following the Windows display language on its own. For now the language is chosen in Settings
 
 ## License
 
