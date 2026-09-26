@@ -1,120 +1,163 @@
 # Voyager
 
-Windows 向けの AI ブラウザ。Chromium を同梱せず、Windows 側の **WebView2 ランタイムを共有**して動く。
-旧「栞（Shiori）」の Chromium 版（Electron・約 200MB）と WebView2 版（v0.2.0）を統合したもの。
+A small AI-first web browser for Windows. It does not bundle Chromium — it runs on the
+**WebView2 runtime that Windows already has**, so the installer stays modest and the engine
+gets updated by Windows Update rather than by me.
 
-- 正式名: **Voyager**（Explorer → Navigator → Voyager）
-- 裏テーマ: V'Ger
+It replaces two earlier attempts at the same idea, both called 栞 (Shiori): a Chromium/Electron
+build (~200 MB) and a thin WebView2 build (v0.2.0).
 
-## 何が変わったか
+- Name: **Voyager** — Explorer → Navigator → Voyager
+- Codename: V'Ger
 
-| | 栞 Chromium 版 | 栞 WebView2 版 0.2.0 | Voyager 1.0.0 |
+日本語版の README は [README.ja.md](README.ja.md) にあります。
+
+## What it does
+
+The address bar takes either a URL or a question. A URL opens as you would expect; anything
+else is sent to whichever AI you have selected (Gemini, ChatGPT, Claude, Meta AI, DeepSeek,
+Grok, Perplexity). A handful of words — `google`, `ぐぐる`, `ようつべ` and friends — open the
+site instead of searching for it.
+
+Everything else is an ordinary browser: tabs that keep their state, a bookmarks bar and
+sidebar, downloads, and a context menu of its own.
+
+## Why it exists
+
+The Chromium build had two faults that made it unpleasant to use every day, and both are
+fixed here.
+
+| | Shiori (Chromium) | Shiori (WebView2) 0.2.0 | Voyager |
 |---|---|---|---|
-| エンジン | Electron 37.10.3 同梱 | WebView2 共有 | WebView2 共有 |
-| 配布サイズ | 約 200MB | 約 1MB | 約 50MB（self-contained）/ 約 1MB（軽量版） |
-| AI 切り替え | **選び直しても前の AI に戻る** | 未実装 | 修正済み |
-| タブ切り替え | **毎回リロード（ログインが飛ぶ）** | なし | ビューを保持（ログイン・スクロール維持） |
-| 右クリック | 日本語メニューあり | なし | 日本語メニューあり |
-| インストーラ | 7-Zip SFX + バッチ | なし | **MSI（Windows Installer）** |
-| アンインストール | アプリ一覧に出ない | — | 「アプリと機能」から可能 |
+| Engine | Electron 37.10.3, bundled | WebView2, shared | WebView2, shared |
+| Download size | ~200 MB | ~1 MB | ~40 MB (self-contained) |
+| Switching AI | **fell back to the previous one** | not implemented | fixed |
+| Switching tabs | **reloaded every time, losing logins** | — | view is kept alive |
+| Installer | 7-Zip SFX + batch file | — | **MSI (Windows Installer)** |
+| Uninstall | did not appear in the app list | — | Settings → Apps |
 
-### AI 切り替えのバグについて
+### About the AI-switching bug
 
-Chromium 版 `renderer/app.js` の `paint()` は
+`paint()` in the Chromium build's `renderer/app.js` read:
 
 ```js
 else if (!tab.url) renderStart();
-else renderPage(tab);      // ← タブに前の URL が残っているとここに来る
+else renderPage(tab);      // ← reached whenever the tab still held its old URL
 ```
 
-となっており、AI を選び直しても `tab.url` を消していなかった。
-Voyager では `MainForm.OnUiMessage()` の `pickEngine` で必ず `ShowStart()` を通す。
+Picking a different AI never cleared `tab.url`, so the old page was re-rendered. In Voyager,
+`pickEngine` in `MainForm.OnUiMessage()` always goes through `ShowStart()`.
 
-## 構成
+## Features
+
+- **Tabs** that keep their WebView2 alive, so logins and scroll position survive a switch
+- **Bookmarks** — a bar and a sidebar, with import and export of Netscape bookmark files
+  (the format Chrome and Firefox both use). Favicons are fetched and cached
+- **Downloads** — a default folder you can set, or a prompt for every download
+- **Context menus** drawn by the app, in the app's own colours, including
+  save / copy / copy-address for images
+- **Per-monitor DPI**. Fonts, icons, row heights and menus all follow the display, and
+  keep their size across 96 / 144 / 192 dpi and when a window moves between monitors
+- **An About page**, because the point was to see the name V'Ger on screen
+
+## Layout
 
 ```
 Voyager.csproj          .NET 10 / WinForms / WebView2
-app.manifest            asInvoker・PerMonitorV2
-assets/Voyager.ico      アイコン（16〜256px）
+app.manifest            asInvoker, PerMonitorV2
+assets/Voyager.ico      icon (16–256 px)
+assets/voyager.jpg      artist's concept shown on the About page
 src/
-  Program.cs            起動と WebView2 ランタイム確認
-  MainForm.cs           タブ・ツールバー・右クリック・ショートカット
-  BrowserTab.cs         タブ 1 個分の状態（WebView2 は破棄しない）
-  TabItem.cs            タブの見た目
-  Pages.cs              内部ページ（AI 選択 / スタート / 設定）の HTML
-  Engines.cs            AI の一覧とクエリ URL
-  UrlHelper.cs          URL 判定（Chromium 版 parseUrl の移植）
-  AppSettings.cs        設定の保存
-  Theme.cs / DarkMenu.cs  配色
-installer/Voyager.wxs   MSI 定義
-build.ps1 / build.sh    ビルドスクリプト
+  Program.cs            startup, WebView2 runtime check
+  MainForm.cs           tabs, toolbar, context menus, shortcuts, downloads
+  BrowserTab.cs         per-tab state (the WebView2 is never disposed)
+  TabItem.cs            how a tab is drawn
+  Pages.cs              internal pages (AI picker / start / settings / about) as HTML
+  Engines.cs            the AI list and their query URLs
+  UrlHelper.cs          URL detection (ported from the Chromium build's parseUrl)
+  AppSettings.cs        settings persistence
+  Bookmarks.cs          the bookmark store
+  BookmarkBar.cs        the bar under the toolbar
+  BookmarkSidebar.cs    the tree on the left
+  NetscapeBookmarks.cs  import and export of bookmark HTML
+  Favicons.cs           favicon decoding and per-DPI cache
+  Log.cs                debug log, with URLs redacted
+  Theme.cs / DarkMenu.cs  colours and menu styling
+installer/Voyager.wxs   MSI definition
+build.cmd               build, package and install
+nextbuild.ps1           picks the next version number
 ```
 
-## ビルド
+## Building
 
-Windows（.NET 10 SDK + WiX v3）:
+Windows, with the .NET 10 SDK and WiX:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File build.ps1
+```
+build.cmd
 ```
 
-Linux / macOS（.NET 10 SDK + msitools）:
+It publishes self-contained win-x64, stages the output, builds the MSI and then runs the
+installer. Progress goes to `make-log.txt`. The version number is chosen by `nextbuild.ps1`,
+which takes the highest number it can find — in the registry, in the installed executable, in
+`buildno.txt` and among the artifacts in the folder — and adds one, so cleaning the folder
+cannot make the version go backwards.
 
-```bash
-./build.sh
-FRAMEWORK_DEPENDENT=1 ./build.sh   # 約 1MB。動作には .NET 10 Desktop Runtime が必要
-```
+## Installing
 
-## インストール
+The MSI installs per user, so it never asks for elevation.
 
-MSI は 2 種類ある。どちらもユーザー単位インストールで UAC は出ない。
+- Installed to `%LOCALAPPDATA%\Programs\Voyager`
+- Shortcuts on the desktop and in the Start menu
+- Uninstall from Settings → Apps
 
-| ファイル | サイズ | 前提 |
-|---|---|---|
-| `Voyager-1.0.0-x64.msi` | 約 43MB | なし（.NET ランタイム同梱） |
-| `Voyager-1.0.0-x64-lite.msi` | 約 750KB | .NET 10 Desktop Runtime が必要 |
+WebView2 must be present. On Windows 11 and up-to-date Windows 10 it already is; if it is
+missing, Voyager says so at startup and offers the download link.
 
-どちらも UpgradeCode が同じなので、一方を入れるともう一方は自動で置き換わる。
-lite 版はランタイム未導入の PC では Windows の「.NET をインストールしてください」画面が出る。
+## Where your data lives
 
-- インストール先: `%LOCALAPPDATA%\Programs\Voyager`
-- ショートカット: デスクトップ / スタートメニュー
-- アンインストール: 設定 →「アプリ」から
-
-## データの置き場所
-
-| 内容 | 場所 |
+| | |
 |---|---|
-| 設定 | `%APPDATA%\Voyager\settings.json` |
-| ログイン状態・Cookie | `%LOCALAPPDATA%\Voyager\WebView2` |
+| Settings | `%APPDATA%\Voyager\settings.json` |
+| Bookmarks | `%APPDATA%\Voyager\bookmarks.json` |
+| Logins and cookies | `%LOCALAPPDATA%\Voyager\WebView2` |
 
-アンインストールしてもこの 2 つは残る。完全に消すならフォルダごと削除する。
+Uninstalling leaves all three in place. Delete the folders yourself if you want them gone.
 
-## 操作
+## Keys
 
-| キー | 動作 |
+| | |
 |---|---|
-| Ctrl+T | 新しいタブ |
-| Ctrl+W | タブを閉じる |
-| Ctrl+L | アドレス欄へ |
-| Ctrl+R / F5 | 再読み込み |
-| Alt+← / → | 戻る / 進む |
-| Ctrl+Tab | 次のタブ |
+| Ctrl+T | new tab |
+| Ctrl+W | close tab |
+| Ctrl+L | focus the address bar |
+| Ctrl+R / F5 | reload |
+| Alt+← / → | back / forward |
+| Ctrl+Tab | next tab |
 
-アドレス欄は URL ならそのまま開き、URL でなければ選んでいる AI に質問として送る。
-`google` `ぐぐる` `ようつべ` などの語はそのままサイトを開く。
+Clicking an unfocused address bar selects the whole URL; clicking again puts the caret where
+you clicked.
 
-## セキュリティ上の作り
+## How it is kept safe
 
-- 内部ページ（AI 選択・設定）は専用の WebView2 で表示し、そこだけ `postMessage` を有効にしている。
-  サイトを表示する WebView2 は `IsWebMessageEnabled = false` なので、外部サイトからアプリを操作できない。
-- `NavigationStarting` で `http` / `https` 以外（`file:` など）を遮断。
-- 別ウィンドウ要求（`target="_blank"`）はアプリ内のタブとして開く。
+- The internal pages (AI picker, start, settings, about) are shown in a **separate WebView2**,
+  and only that one has `postMessage` enabled. The WebView2 that shows websites runs with
+  `IsWebMessageEnabled = false`, so a website cannot drive the application.
+- Those pages carry a Content-Security-Policy of `default-src 'none'` — the only image source
+  allowed is `data:`, so an internal page cannot reach the network at all.
+- `NavigationStarting` blocks anything that is not `http` or `https` (`file:` and the rest).
+- Requests for a new window (`target="_blank"`) open as a tab inside the application.
+- The debug log strips query strings and folds long paths, because image CDNs put
+  hundreds of characters of token into the path itself.
 
-## 残っている宿題
+## Still to do
 
-- **コード署名**。未署名なので初回起動時に SmartScreen が出る。
-  `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a Voyager-1.0.0-x64.msi`
-- 履歴・ブックマーク・ダウンロード一覧の UI
-- タブのドラッグ並び替え、セッション復元
-- 小さいサイズ（16/20px）用のアイコン簡略版
+- **Code signing.** The build is unsigned, so SmartScreen warns on first run.
+  `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a <msi>`
+- History and a downloads list
+- Dragging tabs to reorder, restoring the last session
+- An English UI. The strings are still Japanese, written into the source
+
+## Licence
+
+Not decided yet. Until it is, treat this as source you can read rather than source you can
+reuse.

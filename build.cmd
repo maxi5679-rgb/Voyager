@@ -26,7 +26,9 @@ powershell -NoProfile -Command ^
   "if (Test-Path $p) { Write-Output ('  currently installed: ' + (Get-Item $p).VersionInfo.FileVersion) } else { Write-Output '  currently installed: (none)' }" >> "%LOG%" 2>&1
 
 taskkill /im Voyager.exe /f >> "%LOG%" 2>&1
-timeout /t 2 /nobreak >nul
+rem Wait without 'timeout'. It aborts with "input redirection is not supported"
+rem when this script runs with a redirected stdin, e.g. launched from a tool.
+ping -n 3 127.0.0.1 >nul
 call :arp "before"
 
 echo. >> "%LOG%"
