@@ -29,6 +29,15 @@ internal sealed class AppSettings
     /// </summary>
     public bool PageContextMenu { get; set; } = true;
 
+    /// <summary>
+    /// ダウンロードの保存先。空なら Windows の既定（%USERPROFILE%\Downloads）のまま。
+    /// C: が手狭なときに F: へ直接落とす、といった使い方を想定している。
+    /// </summary>
+    public string DownloadDir { get; set; } = "";
+
+    /// <summary>ダウンロードのたびに保存先をたずねるか。</summary>
+    public bool AskDownloadDir { get; set; }
+
     [JsonIgnore]
     public static string Dir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Voyager");

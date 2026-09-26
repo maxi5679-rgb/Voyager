@@ -1,4 +1,4 @@
-# ========================================
+﻿# ========================================
 # Voyager - Git ignore settings
 # ========================================
 
@@ -50,3 +50,6 @@ Desktop.ini
 # Generated installer binaries
 /installer/Voyager.exe
 /installer/WebView2Loader.dll
+
+# Retired scripts and stray images (kept locally, not part of the build)
+/old/

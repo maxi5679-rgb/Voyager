@@ -9,19 +9,31 @@ internal sealed class TabItem : Panel
     /// <summary>タブ名は Label ではなく自前で描く。
     /// Label は AutoSize=false だと幅が足りないとき先に「折り返し」を選ぶので、
     /// AutoEllipsis を立てても長い題名が 2 行になってタブからはみ出す。</summary>
-    private static readonly Font LabelFont = Theme.Ui(9f);
+    private Font LabelFont => Theme.Ui(9f, FontStyle.Regular, DeviceDpi);
     private string _text = "";
     private readonly Label _close;
     private bool _active;
     private bool _hover;
+
+    // 96 dpi 基準の寸法。実行中に作るタブは WinForms の自動拡大を通らないので、
+    // ここの数字をそのまま置くと 200% の画面で半分の大きさになる。S() で換算する。
+    private const int BaseHeight = 30;
+    private const int BaseWidth = 172;
+    private const int CloseWidth = 26;
+    private const int TextPadLeft = 12;
+    private const int TextPadRight = 8;
+    private const int Radius = 10;
+
+    /// <summary>96 dpi 基準の長さを、いまの拡大率の画素数に直す。</summary>
+    internal int S(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
 
     public event EventHandler? Activated;
     public event EventHandler? CloseRequested;
 
     public TabItem()
     {
-        Height = 30;
-        Width = 172;
+        Height = BaseHeight;
+        Width = BaseWidth;
         Margin = new Padding(0, 4, 6, 0);
         BackColor = Theme.Surface;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
@@ -32,10 +44,10 @@ internal sealed class TabItem : Panel
         {
             AutoSize = false,
             Dock = DockStyle.Right,
-            Width = 26,
+            Width = CloseWidth,
             Text = "×",
             ForeColor = Theme.Muted,
-            Font = Theme.Ui(10f),
+            Font = Theme.Ui(10f),   // ApplyDpi で拡大率に合わせて差し替える
             TextAlign = ContentAlignment.MiddleCenter,
             BackColor = Color.Transparent,
             Cursor = Cursors.Hand,
@@ -50,6 +62,33 @@ internal sealed class TabItem : Panel
         MouseLeave += (_, _) => { _hover = false; Invalidate(); };
 
         Controls.Add(_close);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyDpi();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        ApplyDpi();
+    }
+
+    /// <summary>高さ・閉じるボタン・余白・字の大きさを、いまの拡大率に合わせ直す。
+    /// 幅は MainForm.LayoutTabs が本数に応じて決めるので、ここでは触らない。</summary>
+    private void ApplyDpi()
+    {
+        var h = S(BaseHeight);
+        if (Height != h) Height = h;
+
+        var w = S(CloseWidth);
+        if (_close.Width != w) _close.Width = w;
+        _close.Font = Theme.Ui(10f, FontStyle.Regular, DeviceDpi);
+
+        Margin = new Padding(0, S(4), S(6), 0);
+        Invalidate();
     }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -95,15 +134,16 @@ internal sealed class TabItem : Panel
         g.Clear(Theme.Surface);
 
         var r = new Rectangle(0, 0, Width - 1, Height - 1);
-        using var path = Rounded(r, 10);
+        using var path = Rounded(r, S(Radius));
         using var fill = new SolidBrush(_active ? Theme.CardHover : _hover ? Theme.Card : Theme.Surface);
         g.FillPath(fill, path);
         using var pen = new Pen(_active ? Theme.Accent : Theme.Border);
         g.DrawPath(pen, path);
 
         // 1 行に収め、入らない分は末尾を「…」にする。折り返させない。
-        var right = _close.Visible ? _close.Width : 8;
-        var textRect = new Rectangle(12, 0, Math.Max(0, Width - 12 - right), Height);
+        var left = S(TextPadLeft);
+        var right = _close.Visible ? _close.Width : S(TextPadRight);
+        var textRect = new Rectangle(left, 0, Math.Max(0, Width - left - right), Height);
         if (textRect.Width > 0 && _text.Length > 0)
             TextRenderer.DrawText(g, _text, LabelFont, textRect,
                 _active ? Theme.Text : Theme.Muted,

@@ -44,6 +44,12 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- About 画面の想像図。ソースに base64 で焼き込まず publish に 1 ファイルとして置く。
+         インストーラは publish\** をまるごと拾うので、wxs 側の追記は要らない。 -->
+    <Content Include="assets\voyager.jpg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!--
     WebView2 パッケージは WinForms 版と一緒に WPF 版も参照に加える。
     WPF 版は WindowsBase 5.0.0.0 を要求し、.NET 10 の WindowsBase 4.0.0.0 と衝突して

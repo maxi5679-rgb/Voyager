@@ -156,7 +156,55 @@ internal sealed class BookmarkSidebar : Panel
     {
         var h = (int)Math.Round(RowHeight * DeviceDpi / 96.0);
         if (_tree.ItemHeight != h) _tree.ItemHeight = h;
-        Log.Write($"sidebar dpi: {DeviceDpi} itemHeight={h} width={Width}");
+
+        // 幅も画素なので、拡大率が変わっても WinForms は直してくれない。
+        // 200% の画面では実質半分の幅になり、件数が枠の外へ出る。
+        _applying = true;
+        try
+        {
+            var w = ToDevice(_logicalWidth);
+            if (Width != w) Width = w;
+        }
+        finally { _applying = false; }
+        _appliedDpi = DeviceDpi;   // ここから先の Resize は利用者の操作とみなす
+
+        Log.Write($"sidebar dpi: {DeviceDpi} itemHeight={h} width={Width} (logical {_logicalWidth})");
+    }
+
+    /// <summary>96 dpi 基準の値を、いまの画面の画素数に直す。</summary>
+    public int ToDevice(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
+
+    /// <summary>
+    /// 設定に残す幅。拡大率の違う画面で開き直しても同じ見た目になるよう、
+    /// 画面の画素数ではなく 96 dpi 基準に戻して持つ。
+    /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(
+        System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public int LogicalWidth
+    {
+        get => DeviceDpi > 0 ? (int)Math.Round(Width * 96.0 / DeviceDpi) : Width;
+        set { _logicalWidth = value; if (IsHandleCreated) Width = ToDevice(value); }
+    }
+
+    private int _logicalWidth = 300;
+    private bool _applying;
+
+    /// <summary>最後に幅を換算したときの拡大率。0 は「まだ一度も換算していない」。</summary>
+    private int _appliedDpi;
+
+    /// <summary>
+    /// スプリッタで広げられたとき。利用者が決めた幅を 96 dpi 基準で覚え直す。
+    /// これをしないと、次に拡大率が変わった瞬間に元の幅へ戻ってしまう。
+    /// </summary>
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+
+        // DeviceDpi が変わった直後は、まだ Width を換算していない。
+        // その状態で割り戻すと「新しい拡大率 ÷ 古い画素数」になり、覚えている幅が
+        // 往復のたびに縮んでいく（220 → 147 → 110）。換算を終えた拡大率のときだけ拾う。
+        if (_applying || !IsHandleCreated || Width <= 0 || DeviceDpi != _appliedDpi) return;
+        _logicalWidth = LogicalWidth;
     }
 
     public void FocusSearch() { _search.Focus(); _search.SelectAll(); }
@@ -245,7 +293,7 @@ internal sealed class BookmarkSidebar : Panel
     private void ShowMenu(TreeNode node, Point at)
     {
         if (node.Tag is not BookmarkNode b) return;
-        var menu = DarkMenu.Create();
+        var menu = DarkMenu.Create(DeviceDpi);
 
         if (b.IsLink)
         {

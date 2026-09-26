@@ -17,8 +17,33 @@ internal static class Theme
 
     public const string FontStack = "Segoe UI,Meiryo,system-ui,sans-serif";
 
-    public static Font Ui(float size = 9f, FontStyle style = FontStyle.Regular)
-        => new("Segoe UI", size, style, GraphicsUnit.Point);
+    /// <summary>
+    /// 画面の字。拡大率ごとに作り分けて使い回す。
+    ///
+    /// Font はポイントで指定しても、実体（HFONT）を作った時点の拡大率で画素数が
+    /// 焼き付く。static readonly で 1 個だけ持つと、200% の画面へ移しても
+    /// 100% のときの大きさのまま描かれる。Control.Font に入れたものは WinForms が
+    /// 作り直してくれるが、自前描画（TextRenderer）に渡すものは誰も直してくれない。
+    ///
+    /// 捨てずに溜めるのは意図的。描いている最中に Dispose すると落ちるし、
+    /// 大きさ × 太さ × 拡大率の組み合わせはたかが知れている。
+    /// </summary>
+    private static readonly Dictionary<(float, FontStyle, int), Font> Fonts = [];
+
+    public static Font Ui(float size = 9f, FontStyle style = FontStyle.Regular) => Ui(size, style, 96);
+
+    public static Font Ui(float size, FontStyle style, int dpi)
+    {
+        var key = (size, style, dpi);
+        lock (Fonts)
+        {
+            if (Fonts.TryGetValue(key, out var hit)) return hit;
+            // ポイント → 画素は 1pt = 1/72 インチ。拡大率を自分で掛けて、実体を固定する。
+            var font = new Font("Segoe UI", size * dpi / 72f, style, GraphicsUnit.Pixel);
+            Fonts[key] = font;
+            return font;
+        }
+    }
 
     /// <summary>内部ページ（選択画面・設定）の共通 CSS。</summary>
     public static string PageCss => $$"""
@@ -54,6 +79,14 @@ internal static class Theme
         label.check { display:flex; align-items:center; gap:10px; color:#c6cbb8; cursor:pointer; }
         .brand { display:flex; align-items:baseline; gap:12px; }
         .brand .sub { color:#9aa190; font-size:13px; letter-spacing:.08em; }
+
+        /* About の想像図。元絵は 960x540 なので、等倍を上限にして伸ばさない。 */
+        .shot { margin:24px 0 0; }
+        .shot img {
+            display:block; width:100%; max-width:640px; height:auto;
+            border:1px solid #2d3228; border-radius:12px;
+        }
+        .shot figcaption { color:#9aa190; font-size:12px; margin-top:8px; }
 
         /* 右クリックメニュー（ページ内に描く） */
         #ctx {

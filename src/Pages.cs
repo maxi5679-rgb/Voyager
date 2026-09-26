@@ -16,7 +16,7 @@ internal static class Pages
         <!doctype html>
         <html lang="ja"><head><meta charset="utf-8" />
         <meta http-equiv="Content-Security-Policy"
-              content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+              content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;" />
         <title>{{E(title)}}</title>
         <style>{{Theme.PageCss}}</style>
         </head><body>{{body}}
@@ -141,6 +141,83 @@ internal static class Pages
             """, settingsOpen: false, hasEngine: true);
     }
 
+    /// <summary>
+    /// 「Voyager について」。版と、いま何の上で動いているかを見せるだけの画面。
+    /// 更新の確認はまだ入れていない（見に行く先の Releases が非公開のため）。
+    /// </summary>
+    /// <summary>
+    /// About に出す想像図。publish した assets\voyager.jpg を読んで data URI にする。
+    /// ソースに base64 を焼き込まないのは、絵を差し替えるのにビルドし直さなくて済むようにするため。
+    /// NavigateToString で出すページなので相対パスの &lt;img&gt; は解決されない。
+    /// 読めなければ黙って絵なしにする（About が開かない方が困る）。
+    /// </summary>
+    private static string AboutImage()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "assets", "voyager.jpg");
+            if (!File.Exists(path)) return "";
+            var data = Convert.ToBase64String(File.ReadAllBytes(path));
+            return $"""
+                <figure class="shot">
+                  <img src="data:image/jpeg;base64,{data}"
+                       alt="星間空間へ出るボイジャー1号の想像図">
+                  <figcaption>
+                    星間空間に入るボイジャー1号の想像図。実写ではありません。<br>
+                    Credit: NASA/JPL-Caltech（PIA17462, 2013）
+                  </figcaption>
+                </figure>
+                """;
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"about: image not shown ({ex.GetType().Name})");
+            return "";
+        }
+    }
+
+    public static string About(string? browserVersion)
+    {
+        var exe = Environment.ProcessPath ?? AppContext.BaseDirectory;
+        var built = File.Exists(exe) ? File.GetLastWriteTime(exe).ToString("yyyy-MM-dd HH:mm") : "-";
+
+        return Shell("Voyager について", $$"""
+            <div class="panel">
+              <p class="kicker">about</p>
+              <div class="brand" style="margin:8px 0 4px">
+                <h1 style="margin:0">Voyager</h1>
+                <span class="sub" style="font-size:22px">V'Ger</span>
+              </div>
+              <p class="lead">バージョン {{E(App.Version)}}</p>
+
+              {{AboutImage()}}
+
+              <h2>構成</h2>
+              <p class="meta">
+                WebView2 ランタイム {{E(browserVersion ?? "未検出")}}<br>
+                .NET {{E(Environment.Version.ToString())}} / {{E(System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString())}}<br>
+                ビルド {{E(built)}}
+              </p>
+
+              <h2>場所</h2>
+              <p class="meta">
+                本体　　{{E(exe)}}<br>
+                設定　　{{E(AppSettings.Dir)}}<br>
+                データ　{{E(AppSettings.UserDataDir)}}
+              </p>
+
+              <div class="grid" style="margin-top:28px">
+                <button class="card center" data-msg='{"type":"toggleSettings"}'>設定へ</button>
+              </div>
+
+              <p class="meta" style="margin-top:32px">
+                銘板の汚れで <strong>VOYAGER</strong> の三文字が隠れ、残った <strong>V GER</strong> を
+                自分の名だと思い込んで還ってきた探査機がいました。こちらは開くたびに名乗ります。
+              </p>
+            </div>
+            """, settingsOpen: false, hasEngine: false);
+    }
+
     /// <summary>設定画面。</summary>
     public static string Settings(AppSettings s, Engine? current)
     {
@@ -193,6 +270,30 @@ internal static class Pages
               <div class="grid" style="margin-top:12px">
                 <select class="field" data-change='{"type":"setEngine"}'>{{options}}</select>
               </div>
+              <h2>ダウンロード</h2>
+              <div class="grid">
+                <div class="choice">
+                  <div style="flex:1">
+                    <strong>保存先</strong><br>
+                    <small>{{E(string.IsNullOrWhiteSpace(s.DownloadDir) ? "Windows の既定（ダウンロード フォルダー）" : s.DownloadDir)}}</small>
+                  </div>
+                  <button class="field" style="width:auto;padding:8px 14px;cursor:pointer"
+                          data-msg='{"type":"pickDownloadDir"}'>変更</button>
+                  {{(string.IsNullOrWhiteSpace(s.DownloadDir) ? "" : """
+                  <button class="field" style="width:auto;padding:8px 14px;margin-left:8px;cursor:pointer"
+                          data-msg='{"type":"resetDownloadDir"}'>既定に戻す</button>
+                  """)}}
+                </div>
+              </div>
+              <label class="check" style="margin-top:12px">
+                <input type="checkbox" {{(s.AskDownloadDir ? "checked" : "")}} data-change='{"type":"setAskDownloadDir"}' />
+                ダウンロードするたびに保存先を確認する
+              </label>
+              <p class="meta">
+                保存先は次回起動時も引き継ぎます。C ドライブではなく F ドライブへ直接落とす、といった指定もできます。<br>
+                指定した場所が見つからないとき（外付けを外した後など）は、黙って Windows の既定に戻ります。
+              </p>
+
               <h2>右クリック</h2>
               <label class="check">
                 <input type="checkbox" {{(s.PageContextMenu ? "checked" : "")}} data-change='{"type":"setPageContextMenu"}' />
@@ -207,7 +308,9 @@ internal static class Pages
               </p>
               <h2>データ</h2>
               <p class="meta">ログイン状態と Cookie は次の場所に保存されます。<br>{{E(AppSettings.UserDataDir)}}</p>
-              <p class="meta">Voyager v{{App.Version}} / WebView2</p>
+              <div class="grid" style="margin-top:8px">
+                <button class="card center" data-msg='{"type":"about"}'>Voyager について</button>
+              </div>
             </div>
             """, settingsOpen: true, hasEngine: current is not null);
     }

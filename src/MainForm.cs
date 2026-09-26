@@ -39,14 +39,23 @@ internal sealed class MainForm : Form
         PlaceholderText = "URL または質問",
     };
     private Button _back = null!, _fwd = null!, _reload = null!, _home = null!, _engineBtn = null!, _settingsBtn = null!;
-    private Button _star = null!, _bmBtn = null!;
+    private Button _star = null!, _bmBtn = null!, _newTabBtn = null!;
+
+    /// <summary>右上のボタン置き場。拡大率を変えたときに幅が足りなくなる件の計測用に持っておく。</summary>
+    private FlowLayoutPanel _topRight = null!;
 
     private readonly BookmarkStore _bookmarks = BookmarkStore.Load();
     private BookmarkSidebar _sidebar = null!;
     private BookmarkBar _bar = null!;
     private readonly Splitter _splitter = new()
     {
-        Dock = DockStyle.Left, Width = 5, BackColor = Theme.Border, MinExtra = 360, MinSize = 220,
+        // MinSize はサイドバーの下限幅。既定幅と同じ 220 にしていたので、
+        // 広げることはできても狭めることが一度もできなかった。
+        Dock = DockStyle.Left, Width = 5, BackColor = Theme.Border, MinExtra = 360, MinSize = 120,
+        // 既定の VSplit（←||→）は XOR マスクで背景を反転して描く古い形式で、
+        // 暗い背景や高い拡大率だと黒い塊に潰れる。システムのテーマから描かれる
+        // SizeWE（↔）に替える。Chrome も VS Code もこちらを使っている。
+        Cursor = Cursors.SizeWE,
     };
 
     /// <summary>
@@ -59,10 +68,18 @@ internal sealed class MainForm : Form
     /// </summary>
     private readonly System.Windows.Forms.Timer _faviconSave = new() { Interval = 5000 };
 
+    /// <summary>「Voyager について」を開いているか。</summary>
+    private bool _aboutOpen;
+
+    /// <summary>いま出している右クリックメニュー。ページが動いたら畳むために持っておく。</summary>
+    private ContextMenuStrip? _menu;
+
     /// <summary>利用者がアドレス欄を編集中かどうか（編集中だけ自動更新を止める）。</summary>
     private bool _omniEditing;
     /// <summary>プログラムから _omni.Text を書き換えている最中のフラグ。</summary>
     private bool _omniSyncing;
+    /// <summary>アドレス欄に入ってきた直後かどうか。最初の 1 クリックだけ全選択するのに使う。</summary>
+    private bool _omniFresh;
 
     /// <summary>内部ページ専用。外部サイトは絶対にここに読み込まない。</summary>
     private readonly WebView2 _uiView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Theme.Background };
@@ -110,7 +127,7 @@ internal sealed class MainForm : Form
 
     private void BuildChrome()
     {
-        _sidebar = new BookmarkSidebar(_bookmarks) { Visible = _settings.SidebarOpen, Width = _settings.SidebarWidth };
+        _sidebar = new BookmarkSidebar(_bookmarks) { Visible = _settings.SidebarOpen, LogicalWidth = _settings.SidebarWidth };
         _splitter.Visible = _settings.SidebarOpen;
         _sidebar.OpenRequested += (url, newTab) =>
         {
@@ -139,7 +156,9 @@ internal sealed class MainForm : Form
             Padding = new Padding(0, 5, 8, 0),
             BackColor = Theme.Surface,
         };
+        _topRight = topRight;
         var newTab = IconButton("+", "新しいタブ (Ctrl+T)", (_, _) => NewTab());
+        _newTabBtn = newTab;
         _engineBtn = TextButton("AI", "使う AI を選び直す", (_, _) => OpenPicker());
         _settingsBtn = TextButton("設定", "設定", (_, _) => ToggleSettings());
         topRight.Controls.AddRange([newTab, _engineBtn, _settingsBtn]);
@@ -175,9 +194,28 @@ internal sealed class MainForm : Form
         _omni.Dock = DockStyle.Fill;
         _omni.TabStop = false;   // 起動直後にここへフォーカスが来ないように
         _omni.TextChanged += (_, _) => { if (!_omniSyncing) _omniEditing = true; };
-        _omni.Leave += (_, _) => _omniEditing = false;
+        _omni.Leave += (_, _) => { _omniEditing = false; _omniFresh = false; };
+
+        // よそからアドレス欄に入ってきた最初の 1 クリックだけ、URL を丸ごと選ぶ。
+        // 2 回目からは普通にキャレットが置けるので、URL の一部だけ直すのも邪魔しない。
+        //
+        // MouseDown ではなく MouseUp で選ぶ理由：押した時点で選んでも、その後
+        // TextBox の既定の処理が離した位置にキャレットを置き直して選択が消える。
+        _omni.Enter += (_, _) => _omniFresh = true;
+        _omni.MouseUp += (_, _) =>
+        {
+            if (!_omniFresh) return;
+            _omniFresh = false;
+            if (_omni.TextLength == 0) return;
+            _omni.SelectAll();
+            Log.Write("omni: select all (first click)");
+        };
+
+        _omni.ContextMenuStrip = BuildOmniMenu();
+
         _omni.KeyDown += (_, e) =>
         {
+            _omniFresh = false;   // キーを打ち始めたらもう「入ってきた直後」ではない
             if (e.KeyCode == Keys.Escape)
             {
                 _omniEditing = false;
@@ -201,8 +239,13 @@ internal sealed class MainForm : Form
         var b = new Button
         {
             Text = text,
-            Width = width,
-            Height = 30,
+            // 幅を画素で決め打つと、字だけ拡大率どおりに大きくなって枠から溢れる
+            // （192 dpi で Perplexity が切れていたのがこれ）。字を測らせて、
+            // 96 dpi ぶんを下限に置く。エンジン名の長さの違いにも同時に効く。
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(width, 30),
+            Padding = new Padding(6, 2, 6, 2),
             FlatStyle = FlatStyle.Flat,
             BackColor = Theme.Card,
             ForeColor = Theme.Text,
@@ -296,6 +339,138 @@ internal sealed class MainForm : Form
         }
     }
 
+    /// <summary>
+    /// 右上のボタンが 200% で画面外へ出る件の計測。
+    ///
+    /// topRight は Dock=Right + AutoSize なので、幅は子の合計から決まる。その確定が
+    /// 拡大率の変更に追いつかないと、パネルだけ細いまま残り、FlowLayoutPanel は
+    /// はみ出した子を切り落とす。合計がパネル幅を超えていれば、それが起きている。
+    /// </summary>
+    private void LogChromeWidths(string when)
+    {
+        if (_topRight is null || _settingsBtn is null) return;
+
+        var sum = 0;
+        foreach (Control c in _topRight.Controls) sum += c.Width + c.Margin.Horizontal;
+        sum += _topRight.Padding.Horizontal;
+
+        Log.Write($"topright {when}: dpi={DeviceDpi} panel={_topRight.Width} need={sum} " +
+                  $"bar={_topBar.Width} +={_newTabBtn.Width} AI={_engineBtn.Width} 設定={_settingsBtn.Width} " +
+                  $"right={_topRight.Right} fits={(sum <= _topRight.Width ? "yes" : "NO")}");
+    }
+
+    /// <summary>96 dpi 基準の値を、いまの画面の画素数に直す。</summary>
+    private int Scale(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
+
+    /// <summary>
+    /// 画素で直書きしてある枠の寸法を、いまの拡大率に合わせる。
+    /// WinForms はここを直してくれないので、200% だとバーが字を切り、
+    /// スプリッタの掴み代が半分になる。
+    /// </summary>
+    private void ApplyChromeDpi()
+    {
+        _topBar.Height = Scale(40);
+        _navBar.Height = Scale(48);
+        _splitter.Width = Scale(5);
+        _splitter.MinSize = Scale(120);
+        _splitter.MinExtra = Scale(360);
+        _tabStrip.Padding = new Padding(Scale(8), 0, 0, 0);
+        LayoutTabs();
+
+        // メニューの字は作った時点の拡大率で実体が固まる。作り直す。
+        var old = _omni.ContextMenuStrip;
+        _omni.ContextMenuStrip = BuildOmniMenu();
+        old?.Dispose();
+    }
+
+    /// <summary>
+    /// アドレス欄の右クリックメニュー。既定のままだと Windows の明るいメニューが出て、
+    /// ここだけアプリの配色から浮く。顔ぶれは既定と同じものを並べ直しただけで、
+    /// 「Unicode 制御文字の挿入」のような普段使わない項目は落としてある。
+    ///
+    /// ページ側と違ってフォーカスの小細工は要らない。WebView2 ではなく
+    /// ただの TextBox なので、ContextMenuStrip を差すだけで素直に出る。
+    /// </summary>
+    private ContextMenuStrip BuildOmniMenu()
+    {
+        var menu = DarkMenu.Create(DeviceDpi);
+
+        var undo = DarkMenu.Item("元に戻す", () => { if (_omni.CanUndo) _omni.Undo(); });
+        var cut = DarkMenu.Item("切り取り", () => _omni.Cut());
+        var copy = DarkMenu.Item("コピー", () => _omni.Copy());
+        var paste = DarkMenu.Item("貼り付け", () => _omni.Paste());
+        var del = DarkMenu.Item("削除", () => { if (_omni.SelectionLength > 0) _omni.SelectedText = ""; });
+        var all = DarkMenu.Item("すべて選択", () => _omni.SelectAll());
+
+        menu.Items.AddRange(new ToolStripItem[]
+        {
+            undo, new ToolStripSeparator(), cut, copy, paste, del, new ToolStripSeparator(), all,
+        });
+
+        // 出す直前に、押せるものだけ押せるようにする。灰色のまま並んでいる方が
+        // 「いま何ができるか」が読めるので、項目そのものは隠さない。
+        menu.Opening += (_, _) =>
+        {
+            var sel = _omni.SelectionLength > 0;
+            undo.Enabled = _omni.CanUndo;
+            cut.Enabled = sel;
+            copy.Enabled = sel;
+            del.Enabled = sel;
+            all.Enabled = _omni.TextLength > 0 && _omni.SelectionLength < _omni.TextLength;
+            paste.Enabled = ClipboardHasText(out var unreadable);
+            Log.Write($"omni menu: dpi={DeviceDpi} sel={_omni.SelectionLength}/{_omni.TextLength} " +
+                      $"undo={undo.Enabled} paste={(unreadable ? "err" : paste.Enabled.ToString())}");
+        };
+
+        return menu;
+    }
+
+    /// <summary>
+    /// クリップボードに文字があるか。
+    ///
+    /// Windows のクリップボードは一度に 1 プロセスしか開けない。他のアプリが掴んでいる
+    /// 一瞬に当たると例外になるので、少し待って 3 回試す。一度で諦めると
+    /// 「中身はあるのに貼り付けが灰色」が時々起きる。
+    ///
+    /// それでも読めなければ伏せる（押せて何も起きない方が困る）。読めなかったことは
+    /// <paramref name="unreadable"/> で返し、ログでは「空」と区別する。
+    /// </summary>
+    private static bool ClipboardHasText(out bool unreadable)
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            try
+            {
+                unreadable = false;
+                return Clipboard.ContainsText();
+            }
+            catch
+            {
+                Thread.Sleep(30);
+            }
+        }
+        unreadable = true;
+        return false;
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        ApplyChromeDpi();
+        LogChromeWidths("shown");
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        // 直後はまだ再配置の途中のことがある。落ち着いてから直して測る。
+        BeginInvoke(() =>
+        {
+            ApplyChromeDpi();
+            LogChromeWidths("dpi changed");
+        });
+    }
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         _settings.Maximized = WindowState == FormWindowState.Maximized;
@@ -305,7 +480,7 @@ internal sealed class MainForm : Form
             _settings.WindowHeight = ClientSize.Height;
         }
         _settings.SidebarOpen = _sidebar.Visible;
-        if (_sidebar.Visible) _settings.SidebarWidth = _sidebar.Width;
+        if (_sidebar.Visible) _settings.SidebarWidth = _sidebar.LogicalWidth;   // 96 dpi 基準で残す
         _settings.BarVisible = _bar.Visible;
         _settings.Save();
         _faviconSave.Stop();   // 直後に自分で書くので、二重に書かせない
@@ -325,7 +500,7 @@ internal sealed class MainForm : Form
     {
         if (_uiView.CoreWebView2 is null) return;
 
-        var showInternal = _settingsOpen || _engine is null || _active.Url is null;
+        var showInternal = _settingsOpen || _aboutOpen || _engine is null || _active.Url is null;
 
         foreach (var t in _tabs)
             if (t.View is not null)
@@ -338,7 +513,8 @@ internal sealed class MainForm : Form
             Log.Write($"render internal: settings={_settingsOpen} engine={_engine?.Id ?? "-"} url={Log.Url(_active.Url)} " +
                       $"view={_uiView.Width}x{_uiView.Height} visible={_uiView.Visible} parent={_uiView.Parent?.Name ?? "?"}");
             _uiView.CoreWebView2.NavigateToString(
-                LogHtml(_settingsOpen ? Pages.Settings(_settings, _engine)
+                LogHtml(_aboutOpen ? Pages.About(_env?.BrowserVersionString)
+                        : _settingsOpen ? Pages.Settings(_settings, _engine)
                         : _engine is null ? Pages.Picker()
                         : Pages.Start(_engine)));
         }
@@ -437,8 +613,10 @@ internal sealed class MainForm : Form
     private void LayoutTabs()
     {
         if (_tabs.Count == 0) return;
-        var available = Math.Max(120, _tabStrip.ClientSize.Width - 12);
-        var width = Math.Clamp(available / _tabs.Count - 6, 92, 180);
+        // 92/180 は 96 dpi 基準の下限と上限。生の画素で挟むと、200% の画面では
+        // 上限 180 が実質 90 相当になり、題名が「新しい…」で切れる。
+        var available = Math.Max(Scale(120), _tabStrip.ClientSize.Width - Scale(12));
+        var width = Math.Clamp(available / _tabs.Count - Scale(6), Scale(92), Scale(180));
         foreach (var t in _tabs)
             if (t.Item is not null) t.Item.Width = width;
     }
@@ -454,8 +632,10 @@ internal sealed class MainForm : Form
     private void SelectTab(BrowserTab tab)
     {
         if (ReferenceEquals(tab, _active)) return;
+        // タブを押した場合は外側クリックで勝手に閉じるが、キーボードで移ると残る。
+        CloseMenu();
         _active = tab;
-        _settingsOpen = false;
+        CloseInternalPages();
         Render();
     }
 
@@ -464,7 +644,7 @@ internal sealed class MainForm : Form
         var tab = new BrowserTab();
         _tabs.Add(tab);
         _active = tab;
-        _settingsOpen = false;
+        CloseInternalPages();
         RebuildTabStrip();
         Render();
     }
@@ -495,7 +675,7 @@ internal sealed class MainForm : Form
         var tab = new BrowserTab();
         _tabs.Add(tab);
         _active = tab;
-        _settingsOpen = false;
+        CloseInternalPages();
         RebuildTabStrip();
         Navigate(tab, url);
     }
@@ -509,7 +689,7 @@ internal sealed class MainForm : Form
         tab.Url = url;
         tab.RequestedUrl = url;
         tab.Title = UrlHelper.HostTitle(url);
-        _settingsOpen = false;
+        CloseInternalPages();
         _omniEditing = false;
 
         try
@@ -553,6 +733,14 @@ internal sealed class MainForm : Form
         core.Settings.IsPasswordAutosaveEnabled = true;
         core.Settings.IsGeneralAutofillEnabled = true;
 
+        ApplyDownloadDir(core);
+        core.DownloadStarting += (_, a) =>
+        {
+            // 非同期ラムダではないが、ここで例外を落とすと WebView2 側で握り潰される。
+            try { OnDownloadStarting(a); }
+            catch (Exception ex) { Log.Write($"!! download failed: {ex.GetType().Name} {ex.Message}"); }
+        };
+
         core.DocumentTitleChanged += (_, _) =>
         {
             var title = core.DocumentTitle;
@@ -563,6 +751,9 @@ internal sealed class MainForm : Form
         };
         core.SourceChanged += (_, _) =>
         {
+            // ハッシュだけの移動（Yahoo! の画像検索など）は NavigationStarting が来ない。
+            // こちらは必ず来るので、メニューを畳むのはここでも見る。
+            CloseMenu();
             tab.Url = core.Source;
             if (ReferenceEquals(tab, _active)) UpdateChrome();
         };
@@ -582,6 +773,7 @@ internal sealed class MainForm : Form
         Log.Write("favicon: handler attached");
         core.NavigationStarting += (_, a) =>
         {
+            CloseMenu();
             // http / https 以外（file: など）は開かない
             if (!UrlHelper.IsNavigable(a.Uri)) a.Cancel = true;
         };
@@ -759,7 +951,7 @@ internal sealed class MainForm : Form
 
     private void GoHome()
     {
-        _settingsOpen = false;
+        CloseInternalPages();
         switch (_settings.HomeKind)
         {
             case "ai" when _engine is not null:
@@ -788,15 +980,35 @@ internal sealed class MainForm : Form
     private void OpenPicker()
     {
         _engine = null;
-        _settingsOpen = false;
+        CloseInternalPages();
         if (_settings.RememberEngine) { _settings.EngineId = null; _settings.Save(); }
         Render();
     }
 
     private void ToggleSettings()
     {
-        _settingsOpen = !_settingsOpen;
+        var open = !_settingsOpen;
+        CloseInternalPages();
+        _settingsOpen = open;
         Render();
+    }
+
+    private void ToggleAbout()
+    {
+        var open = !_aboutOpen;
+        CloseInternalPages();
+        _aboutOpen = open;
+        Render();
+    }
+
+    /// <summary>
+    /// 内部ページを全部閉じる。1 つずつ false にして回ると、画面が増えたときに
+    /// 必ずどこかで付け忘れる。閉じる処理はここ 1 か所だけにしておく。
+    /// </summary>
+    private void CloseInternalPages()
+    {
+        _settingsOpen = false;
+        _aboutOpen = false;
     }
 
     // ---------------------------------------------------------------- 内部ページからのメッセージ
@@ -847,6 +1059,10 @@ internal sealed class MainForm : Form
                 GoHome();
                 return;
 
+            case "about":
+                ToggleAbout();
+                return;
+
             case "toggleSettings":
                 ToggleSettings();
                 return;
@@ -877,6 +1093,21 @@ internal sealed class MainForm : Form
                 ApplyContextMenuSetting();
                 return;
 
+            case "pickDownloadDir":
+                PickDownloadDir();
+                return;
+
+            case "resetDownloadDir":
+                _settings.DownloadDir = "";
+                _settings.Save();
+                Render();
+                return;
+
+            case "setAskDownloadDir":
+                _settings.AskDownloadDir = msg.TryGetProperty("value", out var ask) && ask.ValueKind == JsonValueKind.True;
+                _settings.Save();
+                return;
+
             case "setRemember":
                 _settings.RememberEngine = msg.TryGetProperty("value", out var b) && b.ValueKind == JsonValueKind.True;
                 _settings.EngineId = _settings.RememberEngine ? _engine?.Id : null;
@@ -890,6 +1121,102 @@ internal sealed class MainForm : Form
                 Render();
                 return;
         }
+    }
+
+    // ---------------------------------------------------------------- ダウンロード
+
+    /// <summary>設定した保存先を WebView2 に渡す。空のままなら Windows の既定を使う。</summary>
+    private void ApplyDownloadDir(CoreWebView2 core)
+    {
+        var dir = _settings.DownloadDir;
+        if (string.IsNullOrWhiteSpace(dir)) return;
+
+        if (!Directory.Exists(dir))
+        {
+            // 外付けを抜いた後などに起こる。既定に戻して続ける（落とさない）。
+            Log.Write($"download dir missing: {dir}");
+            return;
+        }
+        try { core.Profile.DefaultDownloadFolderPath = dir; }
+        catch (ArgumentException) { /* 使えない場所なら既定のまま */ }
+        catch (NotImplementedException) { /* 古いランタイム */ }
+    }
+
+    private void ApplyDownloadDir()
+    {
+        foreach (var t in _tabs)
+            if (t.View?.CoreWebView2 is { } c) ApplyDownloadDir(c);
+    }
+
+    /// <summary>
+    /// ダウンロードが始まるところ。「毎回たずねる」が入っているときだけ割り込む。
+    ///
+    /// ダイアログを出している間 WebView2 を待たせるので、Deferral を必ず取る。
+    /// 取らずに待たせると、こちらが答えを出す前に既定の動作で走り出す。
+    /// </summary>
+    private void OnDownloadStarting(CoreWebView2DownloadStartingEventArgs a)
+    {
+        var name = Path.GetFileName(a.ResultFilePath);
+
+        // URL は丸ごと残さない。画像 CDN の配信 URL はパスに 200 文字級の使い捨て鍵が
+        // 入っていることがあり、Log.Url() はクエリしか伏せないので素通りしてしまう。
+        // 不具合を追うのに要るのは「どこから何を」までで、その先は要らない。
+        var host = Uri.TryCreate(a.DownloadOperation.Uri, UriKind.Absolute, out var from) ? from.Host : "?";
+        Log.Write($"download: {host} name={name}");
+
+        if (!_settings.AskDownloadDir)
+        {
+            Log.Write($"  -> {Path.GetDirectoryName(a.ResultFilePath)}");
+            return;
+        }
+
+        using var deferral = a.GetDeferral();
+        a.Handled = true;   // 自分で訊くので、WebView2 の既定のダウンロード UI は出さない
+
+        using var dlg = new SaveFileDialog
+        {
+            Title = "保存先",
+            FileName = name,
+            InitialDirectory = PreferredDownloadDir(),
+            OverwritePrompt = true,
+        };
+
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
+            a.ResultFilePath = dlg.FileName;
+            Log.Write($"  -> {Path.GetDirectoryName(dlg.FileName)}");
+        }
+        else
+        {
+            a.Cancel = true;
+            Log.Write("  cancelled");
+        }
+    }
+
+    /// <summary>「毎回たずねる」のダイアログを最初に開く場所。</summary>
+    private string PreferredDownloadDir()
+    {
+        var dir = _settings.DownloadDir;
+        if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir)) return dir;
+        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    }
+
+    /// <summary>設定画面の「変更」から呼ばれる。選ばれたら保存して画面を描き直す。</summary>
+    private void PickDownloadDir()
+    {
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = "ダウンロードの保存先",
+            UseDescriptionForTitle = true,
+            SelectedPath = PreferredDownloadDir(),
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        _settings.DownloadDir = dlg.SelectedPath;
+        _settings.Save();
+        ApplyDownloadDir();
+        Log.Write($"download dir set: {dlg.SelectedPath}");
+        Render();
     }
 
     // ---------------------------------------------------------------- 右クリックメニュー
@@ -912,10 +1239,10 @@ internal sealed class MainForm : Form
             : null;
 
         // 選択文字列は本文そのもの。長さだけ残す。
-        Log.Write($"  kind={target.Kind} link={target.HasLinkUri} editable={target.IsEditable} " +
+        Log.Write($"  kind={target.Kind} link={target.HasLinkUri} src={target.HasSourceUri} editable={target.IsEditable} " +
                   $"selLen={(sel ?? "").Length} loc={e.Location.X},{e.Location.Y} dpi={DeviceDpi}");
 
-        var menu = DarkMenu.Create();
+        var menu = DarkMenu.Create(DeviceDpi);
 
         if (target.HasLinkUri && UrlHelper.IsNavigable(target.LinkUri))
         {
@@ -924,11 +1251,47 @@ internal sealed class MainForm : Form
             menu.Items.Add(DarkMenu.Item("リンクアドレスをコピー", () => SetClipboard(link)));
         }
 
-        if (target.Kind == CoreWebView2ContextMenuTargetKind.Image && target.HasSourceUri)
+        // 画像のときだけ、WebView2 の既定コマンドを借りる経路に入る。
+        // 自前で落とすと Cookie・Referer・リダイレクト・Content-Disposition を
+        // 全部見直すことになるうえ、設定した保存先も通らない。既定を呼べば全部そのまま効く。
+        var borrowed = false;
+        var pick = -1;
+
+        // WebView2 の既定コマンドを、こちらのメニューの項目として借りる。
+        // 対象（どの画像か）は向こうが覚えているので、こちらが SourceUri を
+        // 取れるかどうかとは関係が無い。Yahoo! の画像検索は取れない（src=False）。
+        void Borrow(string name, string label)
         {
-            var src = target.SourceUri;
-            menu.Items.Add(DarkMenu.Item("画像を開く", () => OpenInNewTab(src)));
-            menu.Items.Add(DarkMenu.Item("画像アドレスをコピー", () => SetClipboard(src)));
+            var id = DefaultCommandId(e, name);
+            if (id < 0) return;
+            borrowed = true;
+            menu.Items.Add(DarkMenu.Item(label, () => pick = id));
+        }
+
+        if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
+        {
+            // 「開く」だけは既定コマンドに相当するものが無いので、URL を持っているときだけ。
+            if (target.HasSourceUri)
+            {
+                var src = target.SourceUri;
+                menu.Items.Add(DarkMenu.Item("画像を開く", () => OpenInNewTab(src)));
+            }
+
+            Borrow("saveImageAs", "画像を保存");
+            Borrow("copyImage", "画像をコピー");
+            Borrow("copyImageLocation", "画像アドレスをコピー");
+
+            // 既定コマンドが 1 つも借りられなかったときの保険。
+            // 自前で出せるのはアドレスのコピーだけ（URL を持っていれば）。
+            if (!borrowed)
+            {
+                if (target.HasSourceUri)
+                {
+                    var src = target.SourceUri;
+                    menu.Items.Add(DarkMenu.Item("画像アドレスをコピー", () => SetClipboard(src)));
+                }
+                Log.Write($"  no image commands among: {DefaultCommandNames(e)}");
+            }
         }
 
         if (!string.IsNullOrEmpty(sel))
@@ -956,9 +1319,58 @@ internal sealed class MainForm : Form
         menu.Items.Add(DarkMenu.Item("ホーム", GoHome));
         menu.Items.Add(DarkMenu.Item("設定", ToggleSettings));
 
+        // Deferral を取るのは最後。取った後の行で例外が出ると Complete されないまま残り、
+        // WebView2 が永久に待つ。ここまで来ればもう何も失敗しない。
+        if (borrowed)
+        {
+            var deferral = e.GetDeferral();
+
+            // 閉じたら待たせている WebView2 を解放する。
+            //
+            // 項目の Click とメニューの Closed はどちらが先か当てにできない（右クリックの
+            // MouseDown / MouseUp で一度これに嵌まっている）ので、Closed から更に
+            // BeginInvoke で後ろへ送る。そうすれば Click は必ず済んでいる。
+            menu.Closed += (_, _) => BeginInvoke(() =>
+            {
+                try
+                {
+                    if (pick >= 0)
+                    {
+                        e.SelectedCommandId = pick;
+                        Log.Write($"  default command {pick} selected");
+                    }
+                }
+                catch (Exception ex) { Log.Write($"!! select command failed: {ex.GetType().Name} {ex.Message}"); }
+                finally { deferral.Complete(); }
+            });
+        }
+
         // WebView2 の Location は DIP 基準で当てにしづらいので、実際のカーソル位置（画面座標）に出す
         Log.Write($"  items={menu.Items.Count} showing at cursor {Cursor.Position}");
         ShowMenuAtCursor(menu);
+    }
+
+    /// <summary>
+    /// WebView2 が用意している既定メニューから、名前でコマンド番号を探す。
+    /// 見つからなければ -1（その版に無い、という以上の意味は無いので黙って諦める）。
+    /// </summary>
+    private static int DefaultCommandId(CoreWebView2ContextMenuRequestedEventArgs e, string name)
+    {
+        try
+        {
+            foreach (var item in e.MenuItems)
+                if (string.Equals(item.Name, name, StringComparison.Ordinal))
+                    return item.CommandId;
+        }
+        catch (Exception ex) { Log.Write($"!! default command lookup failed: {ex.GetType().Name} {ex.Message}"); }
+        return -1;
+    }
+
+    /// <summary>既定メニューに何が並んでいたか。1 つも借りられなかったときの手掛かり用。</summary>
+    private static string DefaultCommandNames(CoreWebView2ContextMenuRequestedEventArgs e)
+    {
+        try { return string.Join(",", e.MenuItems.Select(m => m.Name)); }
+        catch (Exception ex) { return $"({ex.GetType().Name})"; }
     }
 
     /// <summary>
@@ -967,9 +1379,30 @@ internal sealed class MainForm : Form
     /// </summary>
     private void ShowMenuAtCursor(ContextMenuStrip menu)
     {
+        CloseMenu();   // 前のが残っていたら先に畳む
+        _menu = menu;
+        menu.Closed += (_, _) => { if (ReferenceEquals(_menu, menu)) _menu = null; };
+
         Activate();
         menu.Show(this, PointToClient(Cursor.Position));
         menu.Focus();
+    }
+
+    /// <summary>
+    /// 出している右クリックメニューを畳む。
+    ///
+    /// WinForms のメニューは WebView2 がページを移ったことを知らない。何もしないと、
+    /// もう無い要素に対するメニューが画面に residual として残り続ける。
+    /// 「画像を保存」の Deferral は Closed から解放されるので、ここで閉じても宙に浮かない。
+    /// </summary>
+    private void CloseMenu()
+    {
+        var m = _menu;
+        _menu = null;
+        if (m is null || m.IsDisposed || !m.Visible) return;
+
+        Log.Write("context menu: closed (page moved)");
+        m.Close(ToolStripDropDownCloseReason.AppFocusChange);
     }
 
     private static void Separator(ContextMenuStrip menu)
@@ -1089,7 +1522,8 @@ internal sealed class MainForm : Form
         {
             case Keys.T when ctrl: NewTab(); return;
             case Keys.W when ctrl: CloseTab(_active); return;
-            case Keys.L when ctrl: _omni.Focus(); _omni.SelectAll(); return;
+            // Ctrl+L はここで選び終えているので、続くクリックでは選び直さない。
+            case Keys.L when ctrl: _omni.Focus(); _omni.SelectAll(); _omniFresh = false; return;
             case Keys.D when ctrl: AddCurrentPage(); return;
             // Chrome に合わせる。B はバーの表示切替、O がブックマーク一覧。
             case Keys.B when ctrl && modifiers.HasFlag(Keys.Shift): ToggleBar(); return;

@@ -11,12 +11,26 @@ namespace Voyager;
 /// </summary>
 internal sealed class BookmarkBar : Panel
 {
+    // 寸法はすべて 96 dpi 基準。字が拡大率に追従するようになったので、
+    // 入れ物も一緒に伸ばさないと 200% で文字が切られる。S() を通して引く。
     private const int BarHeight = 28;
-    private const int PadX = 8;          // 左右の余白
-    private const int GapX = 2;          // 項目どうしの間
-    private const int IconGap = 5;       // アイコンと文字の間
-    private const int MaxItemWidth = 180;
-    private const int OverflowWidth = 24;
+    private int PadX => S(8);            // 左右の余白
+    private int GapX => S(2);            // 項目どうしの間
+    private int IconGap => S(5);         // アイコンと文字の間
+    private int MaxItemWidth => S(180);
+    private int OverflowWidth => S(24);
+
+    /// <summary>96 dpi 基準の値を、いまの画面の画素数に直す。</summary>
+    private int S(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
+
+    /// <summary>ファビコンの一辺。字と同じだけ拡大率に追従させないと、200% で豆粒になる。</summary>
+    private int IconSize => S(Favicons.Size);
+
+    /// <summary>フォルダメニューに一度に見せる行数。これを超えた分はスクロールで送る。</summary>
+    private const int MaxMenuRows = 20;
+
+    /// <summary>いまの拡大率に合わせた大きさでファビコンを引く。</summary>
+    private Image? Icon(BookmarkNode n) => Favicons.Get(n.Icon, IconSize);
 
     private readonly BookmarkStore _store;
     private readonly List<BookmarkNode> _items = [];
@@ -25,7 +39,8 @@ internal sealed class BookmarkBar : Panel
     private Rectangle _overflowRect = Rectangle.Empty;
 
     private int _hover = -1;             // _items の添字。-2 は » ボタン
-    private static readonly Font ItemFont = Theme.Ui(9f);
+    /// <summary>自前で描く字。static で 1 個持つと拡大率に追従しないので、そのつど引く。</summary>
+    private Font ItemFont => Theme.Ui(9f, FontStyle.Regular, DeviceDpi);
 
     /// <summary>リンクを開いてほしい。bool は「新しいタブで」。</summary>
     public event Action<string, bool>? OpenRequested;
@@ -40,7 +55,7 @@ internal sealed class BookmarkBar : Panel
     {
         _store = store;
         Dock = DockStyle.Top;
-        Height = BarHeight;
+        Height = BarHeight;   // 実際の高さは ApplyDpi() で入れ直す
         BackColor = Theme.Surface;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                  ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
@@ -61,6 +76,27 @@ internal sealed class BookmarkBar : Panel
     {
         base.OnResize(e);
         Layout_();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyDpi();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        ApplyDpi();
+    }
+
+    private void ApplyDpi()
+    {
+        var h = S(BarHeight);
+        if (Height != h) Height = h;
+        Layout_();
+        Invalidate();
+        Log.Write($"bar dpi: {DeviceDpi} height={h} icon={IconSize}");
     }
 
     private void Layout_()
@@ -102,15 +138,15 @@ internal sealed class BookmarkBar : Panel
         return true;
     }
 
-    private static int Measure(Graphics g, BookmarkNode n)
+    private int Measure(Graphics g, BookmarkNode n)
     {
-        var hasIcon = n.IsFolder || Favicons.Get(n.Icon) is not null;
+        var hasIcon = n.IsFolder || Icon(n) is not null;
         var text = Label(n);
         var textWidth = text.Length == 0
             ? 0
             : TextRenderer.MeasureText(g, text, ItemFont, new Size(int.MaxValue, 20),
                                        TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine).Width;
-        var w = 6 + (hasIcon ? Favicons.Size + IconGap : 0) + textWidth + 6;
+        var w = 6 + (hasIcon ? IconSize + IconGap : 0) + textWidth + 6;
         return Math.Clamp(w, 24, MaxItemWidth);
     }
 
@@ -156,7 +192,7 @@ internal sealed class BookmarkBar : Panel
         g.FillPath(fill, path);
     }
 
-    private static void DrawItem(Graphics g, BookmarkNode n, Rectangle r, bool hover)
+    private void DrawItem(Graphics g, BookmarkNode n, Rectangle r, bool hover)
     {
         if (hover) FillHover(g, r);
 
@@ -164,15 +200,17 @@ internal sealed class BookmarkBar : Panel
         if (n.IsFolder)
         {
             // フォルダは小さな四角。ファビコンと同じ幅を取るので並びが崩れない。
-            var box = new Rectangle(x + 1, r.Y + (r.Height - 12) / 2, Favicons.Size - 3, 11);
-            using (var fill = new SolidBrush(Theme.Muted)) g.FillRectangle(fill, box.X, box.Y + 2, box.Width, box.Height - 2);
-            using (var fill = new SolidBrush(Theme.Muted)) g.FillRectangle(fill, box.X, box.Y, box.Width / 2, 3);
-            x += Favicons.Size + IconGap;
+            var box = new Rectangle(x + S(1), r.Y + (r.Height - S(12)) / 2, IconSize - S(3), S(11));
+            var lip = Math.Max(1, S(2));
+            var tab = Math.Max(1, S(3));
+            using (var fill = new SolidBrush(Theme.Muted)) g.FillRectangle(fill, box.X, box.Y + lip, box.Width, box.Height - lip);
+            using (var fill = new SolidBrush(Theme.Muted)) g.FillRectangle(fill, box.X, box.Y, box.Width / 2, tab);
+            x += IconSize + IconGap;
         }
-        else if (Favicons.Get(n.Icon) is { } icon)
+        else if (Icon(n) is { } icon)
         {
-            g.DrawImage(icon, x, r.Y + (r.Height - Favicons.Size) / 2, Favicons.Size, Favicons.Size);
-            x += Favicons.Size + IconGap;
+            g.DrawImage(icon, x, r.Y + (r.Height - IconSize) / 2, IconSize, IconSize);
+            x += IconSize + IconGap;
         }
 
         var text = new Rectangle(x, r.Y, r.Right - 6 - x, r.Height);
@@ -244,7 +282,7 @@ internal sealed class BookmarkBar : Panel
     /// <summary>フォルダの中身をメニューで出す。入れ子はそのまま入れ子のメニューにする。</summary>
     private void ShowFolderMenu(List<BookmarkNode> children, Point at)
     {
-        var menu = DarkMenu.Create();
+        var menu = DarkMenu.Create(DeviceDpi);
         menu.ShowItemToolTips = true;   // 切り詰めた題名を全部読めるようにする
         Fill(menu.Items, children, 0);
         Popup(menu, at);
@@ -273,10 +311,19 @@ internal sealed class BookmarkBar : Panel
 
         var area = Screen.FromControl(this).WorkingArea;
 
-        // 画面に入りきらない長さなら、はみ出させずにメニュー側でスクロールさせる。
-        menu.MaximumSize = new Size(0, Math.Max(200, area.Height - 80));
+        // 高さの上限。以前は「画面の高さ − 80px」だけで見ていたが、それは事実上
+        // 画面いっぱいまで伸ばしてよいという意味で、200% では 29 件のフォルダが
+        // 画面を縦断してしまった（1 行 22px が 44px になるので、同じ件数で倍伸びる）。
+        // 行数でも頭を打ち、あふれた分はメニュー側でスクロールさせる。
+        var rowHeight = DarkMenu.ItemFont(DeviceDpi).Height + S(8);
+        var screenCap = Math.Max(S(200), area.Height - S(80));
+        var rowCap = rowHeight * MaxMenuRows + S(16);   // 16 は上下の余白と送り矢印のぶん
+        var cap = Math.Min(screenCap, rowCap);
+        menu.MaximumSize = new Size(0, cap);
 
         var size = menu.GetPreferredSize(Size.Empty);
+        Log.Write($"folder menu: dpi={DeviceDpi} items={menu.Items.Count} row={rowHeight} " +
+                  $"cap={cap} (screen {screenCap} / rows {rowCap}) height={size.Height}");
         var p = PointToScreen(at);
         p.X = Math.Clamp(p.X, area.Left, Math.Max(area.Left, area.Right - size.Width));
         p.Y = Math.Clamp(p.Y, area.Top, Math.Max(area.Top, area.Bottom - size.Height));
@@ -296,7 +343,7 @@ internal sealed class BookmarkBar : Panel
         foreach (var c in children)
         {
             var full = Label(c);
-            var shown = DarkMenu.Fit(full);
+            var shown = DarkMenu.Fit(full, DeviceDpi);
 
             if (c.IsFolder)
             {
@@ -311,7 +358,7 @@ internal sealed class BookmarkBar : Panel
             {
                 var url = c.Url!;
                 var item = DarkMenu.Item(shown, () => OpenRequested?.Invoke(url, false));
-                if (Favicons.Get(c.Icon) is { } icon) item.Image = icon;
+                if (Icon(c) is { } icon) item.Image = icon;
                 Whole(item, full, shown);
                 into.Add(item);
             }
@@ -320,7 +367,7 @@ internal sealed class BookmarkBar : Panel
 
     private void ShowItemMenu(BookmarkNode node, Point at)
     {
-        var menu = DarkMenu.Create();
+        var menu = DarkMenu.Create(DeviceDpi);
         if (node.IsLink)
         {
             var url = node.Url ?? "";
@@ -344,7 +391,7 @@ internal sealed class BookmarkBar : Panel
 
     private void ShowBarMenu(Point at)
     {
-        var menu = DarkMenu.Create();
+        var menu = DarkMenu.Create(DeviceDpi);
         var page = CurrentPageRequested?.Invoke();
         var canAdd = !string.IsNullOrWhiteSpace(page?.Url);
         menu.Items.Add(DarkMenu.Item("このページを追加", AddCurrentPage, canAdd));

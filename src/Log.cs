@@ -17,12 +17,27 @@ internal static class Log
     /// ログに URL を残すときは必ずこれを通す。クエリ文字列には検索語や
     /// OAuth の state / code_challenge がそのまま入るので、ログには出さない。
     /// 不具合を追うのに要るのは「どのページか」までで、その先は要らない。
+    ///
+    /// パスも畳む。画像 CDN には 400 文字級の使い捨て鍵をパスに埋めてくるものがあり
+    /// （Yahoo! の msp.c.yimg.jp など）、クエリだけ伏せても素通りしてしまう。
+    /// 読めないほど長い行になるうえ、その鍵だけで画像を取れてしまう。
     /// </summary>
+    private const int PathMax = 64;
+
     public static string Url(string? url)
     {
         if (string.IsNullOrEmpty(url)) return "-";
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return "(非URL)";
-        var s = u.GetLeftPart(UriPartial.Path);
+
+        var path = u.AbsolutePath;
+        if (path.Length > PathMax)
+        {
+            // 末尾（たいていファイル名）だけ残す。それも長ければ丸ごと畳む。
+            var tail = path[(path.LastIndexOf('/') + 1)..];
+            path = tail.Length is > 0 and <= PathMax ? $"/…/{tail}" : "/…";
+        }
+
+        var s = u.GetLeftPart(UriPartial.Authority) + path;
         if (!string.IsNullOrEmpty(u.Query)) s += "?…";
         if (!string.IsNullOrEmpty(u.Fragment)) s += "#…";
         return s;

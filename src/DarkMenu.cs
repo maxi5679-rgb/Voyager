@@ -26,18 +26,22 @@ internal sealed class DarkMenuRenderer() : ToolStripProfessionalRenderer(new Dar
 
 internal static class DarkMenu
 {
-    /// <summary>メニューの字。Fit() の採寸と食い違わないよう、1 か所に置く。</summary>
-    public static readonly Font ItemFont = Theme.Ui(9f);
+    /// <summary>
+    /// メニューの字。Fit() の採寸と食い違うと切り詰めが狂うので、必ずここから引く。
+    /// 拡大率を渡すのは、static で 1 個持つと 200% の画面で 100% の大きさのまま
+    /// 描かれてしまうため（Font は作った時点の拡大率で実体が固まる）。
+    /// </summary>
+    public static Font ItemFont(int dpi) => Theme.Ui(9f, FontStyle.Regular, dpi);
 
-    /// <summary>題名 1 行に許す幅（画素）。これを超えたら末尾を「…」にする。</summary>
+    /// <summary>題名 1 行に許す幅。96 dpi 基準で、拡大率に合わせて伸ばす。</summary>
     public const int MaxTextWidth = 320;
 
-    public static ContextMenuStrip Create() => new()
+    public static ContextMenuStrip Create(int dpi) => new()
     {
         Renderer = new DarkMenuRenderer(),
         BackColor = Theme.Card,
         ForeColor = Theme.Text,
-        Font = ItemFont,
+        Font = ItemFont(dpi),
         ShowImageMargin = false,
         DropShadowEnabled = true,
     };
@@ -57,9 +61,16 @@ internal static class DarkMenu
     /// MaximumSize で止めない理由：あれは外枠を切るだけなので、字が「…」にならず
     /// 途中でぶつ切りになる。
     /// </summary>
-    public static string Fit(string text, int max = MaxTextWidth)
+    public static string Fit(string text, int dpi)
     {
         if (string.IsNullOrEmpty(text)) return text;
+
+        var max = (int)Math.Round(MaxTextWidth * dpi / 96.0);
+        var font = ItemFont(dpi);
+        int Width(string s) =>
+            TextRenderer.MeasureText(s, font, new Size(int.MaxValue, int.MaxValue),
+                TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine).Width;
+
         if (Width(text) <= max) return text;
 
         // 入る長さを二分探索する。1 文字ずつ削ると、長い題名で採寸が何十回も走る。
@@ -72,8 +83,4 @@ internal static class DarkMenu
         }
         return lo == 0 ? "…" : text[..lo] + "…";
     }
-
-    private static int Width(string s) =>
-        TextRenderer.MeasureText(s, ItemFont, new Size(int.MaxValue, int.MaxValue),
-            TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine).Width;
 }
