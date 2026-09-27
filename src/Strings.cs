@@ -114,6 +114,8 @@ internal static class Strings
     public static string Untitled => T("(名前なし)", "(no name)");
     public static string Rename => T("名前を変更 (F2)", "Rename (F2)");
     public static string MoveToBar => T("ブックマーク バーへ移す", "Move to the bookmarks bar");
+    public static string MoveToFolder => T("フォルダへ移動", "Move to folder");
+    public static string PutHere => T("ここに入れる", "Put it here");
 
     // ---------------------------------------------------------------- ダイアログ
 

@@ -306,10 +306,26 @@ internal sealed class BookmarkSidebar : Panel
         {
             menu.Items.Add(DarkMenu.Item(Strings.MoveToBar, () => MoveToBar(b),
                                          b.ParentId != BookmarkStore.RootBar));
+            menu.Items.Add(FolderMenu.MoveTo(_store, b, DeviceDpi, to => MoveTo(b, to)));
             menu.Items.Add(DarkMenu.Item(Strings.Delete, () => Delete(node)));
         }
 
+        // バーの Popup と同じ理由で、フォームを手前にしてメニューにフォーカスを渡す。
+        // ページ（WebView2）がフォーカスを持ったままだと、メニュー自体は出ても
+        // 「フォルダへ移動 ▶」のようなサブメニューが開いた瞬間に閉じてしまう。
+        FindForm()?.Activate();
+        Log.Write($"sidebar menu: {b.Kind} items={menu.Items.Count}");
         menu.Show(_tree, at);
+        menu.Focus();
+    }
+
+    private void MoveTo(BookmarkNode b, string folderId)
+    {
+        if (!_store.MoveToEnd(b.Id, folderId)) return;
+        Log.Write($"bookmark moved: {b.Kind} -> {(folderId is BookmarkStore.RootBar or BookmarkStore.RootOther ? folderId : "folder")}");
+        _store.Save();
+        Refresh_();
+        StoreChanged?.Invoke();
     }
 
     private void MoveToBar(BookmarkNode b)

@@ -235,6 +235,22 @@ internal sealed class BookmarkStore
         n.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>
+    /// 別のフォルダの末尾へ移す。元のフォルダは詰め直す。
+    /// フォルダを自分の下へ入れる（輪になる）移動は黙って断る。
+    /// </summary>
+    public bool MoveToEnd(string id, string newParentId)
+    {
+        if (Get(id) is not { } n || n.ParentId == newParentId) return false;
+        for (var p = Get(newParentId); p is not null; p = p.ParentId is null ? null : Get(p.ParentId))
+            if (p.Id == id) return false;
+
+        var oldParent = n.ParentId;
+        Move(id, newParentId, NextIndex(newParentId));
+        if (oldParent is not null) Renumber(oldParent);
+        return true;
+    }
+
     /// <summary>並びを 0,1,2... に振り直す。ドラッグで入れ替えたあとに呼ぶ。</summary>
     public void Renumber(string parentId)
     {

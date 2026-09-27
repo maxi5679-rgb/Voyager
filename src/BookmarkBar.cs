@@ -285,7 +285,9 @@ internal sealed class BookmarkBar : Panel
     {
         var menu = DarkMenu.Create(DeviceDpi);
         menu.ShowItemToolTips = true;   // 切り詰めた題名を全部読めるようにする
+        var t = Environment.TickCount64;
         Fill(menu.Items, children, 0);
+        Log.Write($"folder menu: built in {Environment.TickCount64 - t}ms");
         Popup(menu, at);
     }
 
@@ -306,6 +308,15 @@ internal sealed class BookmarkBar : Panel
     /// 位置を任せると Windows が収まる場所を探して隣のモニターへ飛ばすことがある。
     /// 画面座標で明示し、このバーが乗っているモニターの作業領域に収める。
     /// </summary>
+    /// <summary>メニュー 1 枚の高さの上限。行数と画面の高さの小さい方。子のメニューにも同じものを使う。</summary>
+    private (int cap, int row, int screen, int rows) MenuCap(Rectangle area)
+    {
+        var rowHeight = DarkMenu.ItemFont(DeviceDpi).Height + S(8);
+        var screenCap = Math.Max(S(200), area.Height - S(80));
+        var rowCap = rowHeight * MaxMenuRows + S(16);   // 16 は上下の余白と送り矢印のぶん
+        return (Math.Min(screenCap, rowCap), rowHeight, screenCap, rowCap);
+    }
+
     private void Popup(ContextMenuStrip menu, Point at)
     {
         FindForm()?.Activate();
@@ -316,10 +327,7 @@ internal sealed class BookmarkBar : Panel
         // 画面いっぱいまで伸ばしてよいという意味で、200% では 29 件のフォルダが
         // 画面を縦断してしまった（1 行 22px が 44px になるので、同じ件数で倍伸びる）。
         // 行数でも頭を打ち、あふれた分はメニュー側でスクロールさせる。
-        var rowHeight = DarkMenu.ItemFont(DeviceDpi).Height + S(8);
-        var screenCap = Math.Max(S(200), area.Height - S(80));
-        var rowCap = rowHeight * MaxMenuRows + S(16);   // 16 は上下の余白と送り矢印のぶん
-        var cap = Math.Min(screenCap, rowCap);
+        var (cap, rowHeight, screenCap, rowCap) = MenuCap(area);
         menu.MaximumSize = new Size(0, cap);
 
         var size = menu.GetPreferredSize(Size.Empty);
@@ -331,6 +339,66 @@ internal sealed class BookmarkBar : Panel
 
         menu.Show(p, ToolStripDropDownDirection.BelowRight);
         menu.Focus();
+    }
+
+    /// <summary>
+    /// 子フォルダの中身は、開いたときに作る。
+    ///
+    /// 以前は開いた瞬間に木を丸ごと組み立てていた。取り込んだブックマーク（37 フォルダ・
+    /// 2,363 件・ファビコン 1,414 個）を入れたフォルダでは、「»」を押すたびに 5.5 秒固まり、
+    /// その間の連打が溜まって、開いては閉じるを繰り返した。
+    /// </summary>
+    private void FillLater(ToolStripMenuItem sub, string folderId, int depth)
+    {
+        // 空だと ▶ が出ず、開けるフォルダに見えない。仮の 1 件を置いておく。
+        sub.DropDownItems.Add(new ToolStripMenuItem("…") { Enabled = false });
+        var built = false;
+        long shownFrom = 0;
+        sub.DropDownOpening += (_, _) =>
+        {
+            if (built) return;
+            built = true;
+            var t = Environment.TickCount64;
+            sub.DropDown.SuspendLayout();
+            sub.DropDownItems.Clear();
+            var children = _store.Children(folderId);
+            Fill(sub.DropDownItems, children, depth);
+            // 根のメニューと同じ高さで頭を打ち、あふれた分は送り矢印で動かす。
+            // 1.0.78 で 272 件のフォルダを開いた直後に Voyager が応答しなくなった。
+            // 組み立て自体は 516ms で終わっていたので、疑わしいのは表示の段。
+            // 根のメニューには上限があって 37 件でも問題なく出ていたが、子には無かった。
+            sub.DropDown.MaximumSize = new Size(0, MenuCap(Screen.FromControl(this).WorkingArea).cap);
+            sub.DropDown.ResumeLayout();
+            if (sub.DropDown is ToolStripDropDownMenu dd) dd.ShowItemToolTips = true;
+            KeepOnSameScreen(sub);
+            Log.Write($"folder submenu: items={children.Count} built in {Environment.TickCount64 - t}ms");
+            shownFrom = Environment.TickCount64;
+        };
+        // 組み立ててから実際に出るまで。ここが出なければ、止まったのは表示の段。
+        sub.DropDownOpened += (_, _) =>
+        {
+            if (shownFrom == 0) return;
+            Log.Write($"folder submenu: shown after {Environment.TickCount64 - shownFrom}ms height={sub.DropDown.Height}");
+            shownFrom = 0;
+        };
+    }
+
+    /// <summary>
+    /// 子のメニューを親と同じ画面に出す。
+    ///
+    /// 右に出す余地が無いとき、WinForms は隣のモニターに余地があればそちらへはみ出させる。
+    /// バーの右端にあるフォルダ（bookmarks）の子が隣の画面へ出て、モニターが 1 枚なら
+    /// 見えない位置になる。拡大率の違う画面をまたぐと描き直しも重い。
+    /// 親の画面の右端に収まらないなら左へ出す。
+    /// </summary>
+    private static void KeepOnSameScreen(ToolStripMenuItem sub)
+    {
+        if (sub.Owner is not ToolStripDropDown parent) return;
+        var area = Screen.FromRectangle(parent.Bounds).WorkingArea;
+        var width = sub.DropDown.GetPreferredSize(Size.Empty).Width;
+        var toLeft = parent.Bounds.Right + width > area.Right;
+        sub.DropDownDirection = toLeft ? ToolStripDropDownDirection.Left : ToolStripDropDownDirection.Right;
+        Log.Write($"folder submenu: {(toLeft ? "left" : "right")} (parent right={parent.Bounds.Right} width={width} screen right={area.Right})");
     }
 
     private void Fill(ToolStripItemCollection into, List<BookmarkNode> children, int depth)
@@ -351,7 +419,7 @@ internal sealed class BookmarkBar : Panel
                 var sub = new ToolStripMenuItem(shown);
                 // 深く潜りすぎるメニューは操作できない。5 段で止めて、その先はサイドバーに任せる。
                 if (depth >= 5) sub.DropDownItems.Add(DarkMenu.Item(Strings.MenuTooDeep, () => { }, enabled: false));
-                else Fill(sub.DropDownItems, _store.Children(c.Id), depth + 1);
+                else FillLater(sub, c.Id, depth + 1);
                 Whole(sub, full, shown);
                 into.Add(sub);
             }
@@ -385,6 +453,7 @@ internal sealed class BookmarkBar : Panel
         menu.Items.Add(new ToolStripSeparator());
         if (node.IsLink && !string.IsNullOrEmpty(node.Icon))
             menu.Items.Add(DarkMenu.Item(Strings.ClearIcon, () => ClearIcon(node)));
+        menu.Items.Add(FolderMenu.MoveTo(_store, node, DeviceDpi, to => MoveTo(node, to)));
         menu.Items.Add(DarkMenu.Item(Strings.MoveToUnsorted, () => MoveToOther(node)));
         menu.Items.Add(DarkMenu.Item(Strings.RemoveFromBar, () => RemoveFromBar(node)));
         Popup(menu, at);
@@ -438,6 +507,13 @@ internal sealed class BookmarkBar : Panel
     {
         node.Icon = null;
         node.UpdatedAt = DateTimeOffset.UtcNow;
+        Commit();
+    }
+
+    private void MoveTo(BookmarkNode node, string folderId)
+    {
+        if (!_store.MoveToEnd(node.Id, folderId)) return;
+        Log.Write($"bookmark moved from bar: {node.Kind} -> {(folderId is BookmarkStore.RootBar or BookmarkStore.RootOther ? folderId : "folder")}");
         Commit();
     }
 
