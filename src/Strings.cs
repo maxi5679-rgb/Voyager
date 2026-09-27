@@ -74,6 +74,10 @@ internal static class Strings
         T($"WebView2 の初期化に失敗しました。\n\n{detail}",
           $"WebView2 could not start.\n\n{detail}");
 
+    public static string ImageSaveFailed(string detail) =>
+        T($"画像を保存できませんでした。\n\n{detail}",
+          $"The image could not be saved.\n\n{detail}");
+
     public static string PageOpenFailed(string detail) =>
         T($"ページを開けませんでした。\n\n{detail}",
           $"That page could not be opened.\n\n{detail}");

@@ -1246,13 +1246,7 @@ internal sealed class MainForm : Form
             a.ResultFilePath = dlg.FileName;
             Log.Write($"  -> {Path.GetDirectoryName(dlg.FileName)}");
 
-            // 次のダイアログはここから開く
-            var chosen = Path.GetDirectoryName(dlg.FileName);
-            if (!string.IsNullOrEmpty(chosen) && chosen != _settings.LastSaveDir)
-            {
-                _settings.LastSaveDir = chosen;
-                _settings.Save();
-            }
+            RememberSaveDir(dlg.FileName);
         }
         else
         {
@@ -1275,6 +1269,111 @@ internal sealed class MainForm : Form
         }
         Log.Write("  save dialog: default folder");
         return PreferredDownloadDir();
+    }
+
+    /// <summary>次の保存ウィンドウはここから開く。</summary>
+    private void RememberSaveDir(string file)
+    {
+        var chosen = Path.GetDirectoryName(file);
+        if (string.IsNullOrEmpty(chosen) || chosen == _settings.LastSaveDir) return;
+        _settings.LastSaveDir = chosen;
+        _settings.Save();
+    }
+
+    /// <summary>
+    /// 画像を自分で保存する。押したらすぐ保存ウィンドウを出し、取得はその裏で始めておく。
+    /// URL に画像の拡張子が無いときだけ、Content-Type を見るために取得を待ってから出す。
+    /// </summary>
+    private async void SaveImageOwn(CoreWebView2 core, string url, string? referer)
+    {
+        var started = Environment.TickCount64;
+        var fetch = ImageSaver.FetchAsync(core, url, referer);
+        _ = fetch.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+
+        try
+        {
+            var name = ImageSaver.NameFromUrl(url, out var hasExt);
+            var ext = hasExt ? Path.GetExtension(name).TrimStart('.') : null;
+            if (!hasExt)
+            {
+                var r = await fetch;
+                ext = ImageSaver.ExtFor(r.MediaType);
+                if (ext is not null) name += "." + ext;
+            }
+
+            using var dlg = new SaveFileDialog
+            {
+                Title = Strings.SaveImage,
+                FileName = name,
+                InitialDirectory = LastOrPreferredDir(),
+                OverwritePrompt = true,
+            };
+            if (ext is not null)
+            {
+                dlg.Filter = $"{ext.ToUpperInvariant()} (*.{ext})|*.{ext}|*.*|*.*";
+                dlg.DefaultExt = ext;
+            }
+
+            Log.Write($"  image save: dialog after {Environment.TickCount64 - started}ms name={name}");
+            if (dlg.ShowDialog(this) != DialogResult.OK)
+            {
+                Log.Write("  image save: cancelled");
+                return;
+            }
+            RememberSaveDir(dlg.FileName);
+
+            var result = await fetch;
+            await File.WriteAllBytesAsync(dlg.FileName, result.Bytes);
+            Log.Write($"  image save: wrote {result.Bytes.Length} bytes ({result.MediaType ?? "?"}) " +
+                      $"-> {Path.GetDirectoryName(dlg.FileName)}");
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"!! image save failed: {ex.GetType().Name} {ex.Message}");
+            MessageBox.Show(this, Strings.ImageSaveFailed(ex.Message), Strings.SaveImage,
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    /// <summary>ログ用。URL は残さず種類とホストだけ。</summary>
+    private static string UrlKind(string url) =>
+        url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? "data"
+        : Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "?";
+
+    private static async Task<T?> WithTimeout<T>(Task<T?> task, int ms)
+    {
+        var done = await Task.WhenAny(task, Task.Delay(ms));
+        return done == task ? await task : default;
+    }
+
+    /// <summary>
+    /// 右クリックした座標の下にある IMG の URL をページに訊く。無ければ null。
+    /// 主フレームしか見えないので、iframe の中の画像は取れない（そのときは Chromium に任せる）。
+    /// e.Location の座標系に確信が無いので、そのままと devicePixelRatio で割ったものの両方で探す。
+    /// </summary>
+    private static async Task<string?> ImageUrlAtPoint(CoreWebView2? core, Point p)
+    {
+        if (core is null) return null;
+        try
+        {
+            var js = $$"""
+                (() => {
+                  const at = (x, y) => {
+                    const el = document.elementFromPoint(x, y);
+                    return el && el.tagName === 'IMG' ? (el.currentSrc || el.src || null) : null;
+                  };
+                  const r = devicePixelRatio || 1;
+                  return at({{p.X}}, {{p.Y}}) || (r !== 1 ? at({{p.X}} / r, {{p.Y}} / r) : null);
+                })()
+                """;
+            var raw = await core.ExecuteScriptAsync(js);
+            return System.Text.Json.JsonSerializer.Deserialize<string?>(raw);
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"  image url probe failed {ex.GetType().Name}");
+            return null;
+        }
     }
 
     /// <summary>設定の保存先。無ければユーザーフォルダ。</summary>
@@ -1328,19 +1427,27 @@ internal sealed class MainForm : Form
 
         var menu = DarkMenu.Create(DeviceDpi);
 
-        // ---- 画像保存が黙って何もしない件の計測 ----
-        // 仮説：Chromium の saveImageAs / copyImage は、実行する瞬間に右クリックした
-        // 座標をもう一度拾い直す（SaveImageAt(x, y)）。メニューを選ぶ間にマウスが画像を
-        // 離れてホバーの覆いが変わる、カルーセルが送られる、レイアウトがずれる、などで
-        // 座標の下が画像でなくなっていると、何も起きない。
-        // 開いた瞬間と選んだ瞬間の両方で座標の下を調べ、食い違いを見る。
+        // ---- 画像保存の計測 ----
+        // 「座標を拾い直すので外れる」という最初の仮説は外れた（開いたときも選んだときも同じ IMG）。
+        // 実際は、Chromium が .tmp を書き始めても DownloadStarting がページを動かすまで届かない。
+        // 開いた瞬間と選んだ瞬間の座標の下は、Chromium に任せる経路の手掛かりとして残してある。
         var openedAt = Environment.TickCount64;
         var point = e.Location;
         var isImage = target.Kind == CoreWebView2ContextMenuTargetKind.Image;
+        // 「画像を保存」は URL が分かれば自分で取る（ImageSaver）。URL はここで押さえておく。
+        // WebView2 が渡してこないとき（src=none）は、ページに座標の下の IMG を訊く。
+        Task<string?> imageUrl = Task.FromResult<string?>(null);
+        var pageUrl = core.Source;
+        var hadSrc = target.HasSourceUri;
         if (isImage)
         {
             Log.Write($"  image: frame={(target.IsRequestedForMainFrame ? "main" : "sub")} src={SrcSummary(target)}");
             _ = ProbeAtPoint(core, point, "at-open");
+
+            var src = target.HasSourceUri ? target.SourceUri : null;
+            if (ImageSaver.CanFetch(src)) imageUrl = Task.FromResult<string?>(src);
+            else if (src is null) imageUrl = ImageUrlAtPoint(core, point);
+            // blob: は自分では取れない。Chromium に任せる。
         }
 
         if (target.HasLinkUri && UrlHelper.IsNavigable(target.LinkUri))
@@ -1351,8 +1458,8 @@ internal sealed class MainForm : Form
         }
 
         // 画像のときだけ、WebView2 の既定コマンドを借りる経路に入る。
-        // 自前で落とすと Cookie・Referer・リダイレクト・Content-Disposition を
-        // 全部見直すことになるうえ、設定した保存先も通らない。既定を呼べば全部そのまま効く。
+        // ただし「画像を保存」は、URL が分かれば選ばれた時点で自前（ImageSaver）に切り替える。
+        // 借りるのは、URL が取れなかったときの逃げ道として。
         var borrowed = false;
         var pick = -1;
         var pickName = "";
@@ -1430,10 +1537,27 @@ internal sealed class MainForm : Form
             // 項目の Click とメニューの Closed はどちらが先か当てにできない（右クリックの
             // MouseDown / MouseUp で一度これに嵌まっている）ので、Closed から更に
             // BeginInvoke で後ろへ送る。そうすれば Click は必ず済んでいる。
-            menu.Closed += (_, _) => BeginInvoke(() =>
+            menu.Closed += (_, _) => BeginInvoke(async () =>
             {
+                string? ownSave = null;
                 try
                 {
+                    // 画像の保存は、URL が分かっていれば Chromium に渡さず自分でやる。
+                    if (pickName == "saveImageAs")
+                    {
+                        var url = await WithTimeout(imageUrl, 1000);
+                        if (ImageSaver.CanFetch(url))
+                        {
+                            ownSave = url;
+                            pick = -1;
+                            Log.Write($"  image save: own ({(hadSrc ? "src" : "probe")} {UrlKind(url)})");
+                        }
+                        else
+                        {
+                            Log.Write("  image save: no usable URL, handing to Chromium");
+                        }
+                    }
+
                     if (pick >= 0)
                     {
                         // 渡す直前に座標の下をもう一度見る。Chromium が拾い直すのとほぼ同じ瞬間。
@@ -1453,6 +1577,9 @@ internal sealed class MainForm : Form
                 }
                 catch (Exception ex) { Log.Write($"!! select command failed: {ex.GetType().Name} {ex.Message}"); }
                 finally { deferral.Complete(); }
+
+                // WebView2 を放してから保存ウィンドウを出す
+                if (ownSave is not null) SaveImageOwn(core, ownSave, pageUrl);
             });
         }
 
