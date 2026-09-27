@@ -98,6 +98,37 @@ internal static class ImageSaver
         mediaType is not null && ExtByType.TryGetValue(mediaType, out var e) ? e : null;
 
     /// <summary>
+    /// 取れた画像の拡張子。Content-Type を先に見て、無い・知らない種類なら中身の先頭で判別する。
+    /// static.staff-start.com のように Content-Type を返さないサーバーがある。
+    /// </summary>
+    public static string? ExtOf(Result r) => ExtFor(r.MediaType) ?? ExtFromBytes(r.Bytes);
+
+    /// <summary>ファイルの先頭数バイト（マジックナンバー）から画像の種類を当てる。分からなければ null。</summary>
+    public static string? ExtFromBytes(byte[] b)
+    {
+        bool At(int offset, params byte[] sig) =>
+            b.Length >= offset + sig.Length && b.AsSpan(offset, sig.Length).SequenceEqual(sig);
+        bool Ascii(int offset, string sig) =>
+            At(offset, System.Text.Encoding.ASCII.GetBytes(sig));
+
+        if (At(0, 0xFF, 0xD8, 0xFF)) return "jpg";
+        if (At(0, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) return "png";
+        if (Ascii(0, "GIF87a") || Ascii(0, "GIF89a")) return "gif";
+        if (Ascii(0, "RIFF") && Ascii(8, "WEBP")) return "webp";
+        if (Ascii(4, "ftypavif") || Ascii(4, "ftypavis")) return "avif";
+        if (Ascii(0, "BM")) return "bmp";
+        if (At(0, 0x00, 0x00, 0x01, 0x00)) return "ico";
+        if (At(0, 0x49, 0x49, 0x2A, 0x00) || At(0, 0x4D, 0x4D, 0x00, 0x2A)) return "tif";
+
+        // SVG は文字。先頭の少しだけ見る。
+        var head = System.Text.Encoding.UTF8.GetString(b, 0, Math.Min(b.Length, 512)).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+        if (head.StartsWith("<svg", StringComparison.OrdinalIgnoreCase) ||
+            (head.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) && head.Contains("<svg", StringComparison.OrdinalIgnoreCase)))
+            return "svg";
+        return null;
+    }
+
+    /// <summary>
     /// URL から保存名の元を作る。拡張子が画像のものなら拡張子付きで、そうでなければ拡張子なしで返す。
     /// hasExt が false のときは、呼び出し側が Content-Type から拡張子を足す。
     /// </summary>

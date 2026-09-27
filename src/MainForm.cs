@@ -1282,7 +1282,8 @@ internal sealed class MainForm : Form
 
     /// <summary>
     /// 画像を自分で保存する。押したらすぐ保存ウィンドウを出し、取得はその裏で始めておく。
-    /// URL に画像の拡張子が無いときだけ、Content-Type を見るために取得を待ってから出す。
+    /// URL に画像の拡張子が無いときは、種類を知るために取得を最大 1 秒だけ待つ。
+    /// 間に合わなければ拡張子なしでウィンドウを出し、書くときに中身から判別して足す。
     /// </summary>
     private async void SaveImageOwn(CoreWebView2 core, string url, string? referer)
     {
@@ -1294,10 +1295,10 @@ internal sealed class MainForm : Form
         {
             var name = ImageSaver.NameFromUrl(url, out var hasExt);
             var ext = hasExt ? Path.GetExtension(name).TrimStart('.') : null;
-            if (!hasExt)
+            if (!hasExt && await Task.WhenAny(fetch, Task.Delay(1000)) == fetch)
             {
-                var r = await fetch;
-                ext = ImageSaver.ExtFor(r.MediaType);
+                var r = await fetch;   // 失敗していればここで投げて、ウィンドウを出さずに知らせる
+                ext = ImageSaver.ExtOf(r);
                 if (ext is not null) name += "." + ext;
             }
 
@@ -1323,15 +1324,40 @@ internal sealed class MainForm : Form
             RememberSaveDir(dlg.FileName);
 
             var result = await fetch;
-            await File.WriteAllBytesAsync(dlg.FileName, result.Bytes);
-            Log.Write($"  image save: wrote {result.Bytes.Length} bytes ({result.MediaType ?? "?"}) " +
-                      $"-> {Path.GetDirectoryName(dlg.FileName)}");
+            var path = dlg.FileName;
+
+            // 拡張子なしで訊いた（1 秒で種類が分からなかった）なら、ここで足す。
+            // 足した名前が既にあれば上書きせず、(1)、(2) … と避ける。
+            if (Path.GetExtension(path).Length == 0 && ImageSaver.ExtOf(result) is { } late)
+            {
+                path = UniquePath(path + "." + late);
+                Log.Write($"  image save: added .{late} after the dialog");
+            }
+
+            await File.WriteAllBytesAsync(path, result.Bytes);
+            var kind = result.MediaType ?? (ImageSaver.ExtFromBytes(result.Bytes) is { } sniffed ? $"sniffed {sniffed}" : "?");
+            Log.Write($"  image save: wrote {result.Bytes.Length} bytes ({kind}) " +
+                      $"-> {Path.GetDirectoryName(path)}");
         }
         catch (Exception ex)
         {
             Log.Write($"!! image save failed: {ex.GetType().Name} {ex.Message}");
             MessageBox.Show(this, Strings.ImageSaveFailed(ex.Message), Strings.SaveImage,
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    /// <summary>path が既にあれば「名前 (1).拡張子」…と空いている名前を返す。</summary>
+    private static string UniquePath(string path)
+    {
+        if (!File.Exists(path)) return path;
+        var dir = Path.GetDirectoryName(path) ?? "";
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        for (var i = 1; ; i++)
+        {
+            var p = Path.Combine(dir, $"{stem} ({i}){ext}");
+            if (!File.Exists(p)) return p;
         }
     }
 
