@@ -63,6 +63,7 @@
       失敗しても旧版が残る。同じ UpgradeCode / 同じ構成なので差分だけで済む。
     -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  IgnoreLanguage="yes"
                   Schedule="afterInstallExecute"
                   DowngradeErrorMessage="A newer version of Voyager is already installed. / より新しい Voyager がすでにインストールされています。" />
     <MediaTemplate EmbedCab="yes" />
