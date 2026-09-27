@@ -44,6 +44,9 @@ internal sealed class AppSettings
     /// </summary>
     public string LastSaveDir { get; set; } = "";
 
+    /// <summary>★ の窓で最後に選んだフォルダの id。次に ★ を押したときの入れ先。空なら「未整理」。</summary>
+    public string LastBookmarkFolder { get; set; } = "";
+
     /// <summary>
     /// 画面の言語。"ja" か "en"。
     /// いまは設定で明示的に選ぶ。将来 "auto"（Windows の表示言語に従う）を足して

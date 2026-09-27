@@ -97,6 +97,11 @@ internal static class Strings
     public static string MoveToUnsorted => T("未整理へ移す", "Move to unsorted");
     public static string RemoveFromBar => T("バーから削除", "Remove from bar");
     public static string AddThisPage => T("このページを追加", "Add this page");
+    public static string BookmarkAdded => T("ブックマークに追加しました", "Bookmark added");
+    public static string BookmarkEdit => T("ブックマークを編集", "Edit bookmark");
+    public static string BookmarkName => T("名前", "Name");
+    public static string BookmarkFolder => T("フォルダ", "Folder");
+    public static string Done => T("完了", "Done");
     public static string NewFolder => T("フォルダを作る", "New folder");
     public static string NewFolderName => T("新しいフォルダ", "New folder");
 

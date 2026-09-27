@@ -48,6 +48,12 @@ internal sealed class BookmarkBar : Panel
     /// <summary>いま開いているページをバーに入れたい。(URL, 題名) を返す。null なら追加しない。</summary>
     public event Func<(string? Url, string? Title)>? CurrentPageRequested;
 
+    /// <summary>
+    /// 「このページを追加」。★ と同じ窓を、バーを入れ先にして出してほしい。画面座標を渡す。
+    /// 受け手がいなければ、これまでどおり黙ってバーの末尾に入れる。
+    /// </summary>
+    public event Action<Point>? AddPageRequested;
+
     /// <summary>ストアを書き換えた。サイドバー側も描き直してほしい。</summary>
     public event Action? StoreChanged;
 
@@ -464,7 +470,11 @@ internal sealed class BookmarkBar : Panel
         var menu = DarkMenu.Create(DeviceDpi);
         var page = CurrentPageRequested?.Invoke();
         var canAdd = !string.IsNullOrWhiteSpace(page?.Url);
-        menu.Items.Add(DarkMenu.Item(Strings.AddThisPage, AddCurrentPage, canAdd));
+        var screenAt = PointToScreen(at);
+        menu.Items.Add(DarkMenu.Item(Strings.AddThisPage, () =>
+        {
+            if (AddPageRequested is { } ask) ask(screenAt); else AddCurrentPage();
+        }, canAdd));
         menu.Items.Add(DarkMenu.Item(Strings.NewFolder, AddFolder));
         Popup(menu, at);
     }

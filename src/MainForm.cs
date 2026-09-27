@@ -147,6 +147,7 @@ internal sealed class MainForm : Form
             Submit(url);
         };
         _bar.CurrentPageRequested += () => (_active.Url, _active.Title);
+        _bar.AddPageRequested += at => ShowBookmarkPopup(BookmarkStore.RootBar, at);
         // 片方が書き換えたら、もう片方も描き直す。同じストアを 2 つの画面が見ているため。
         _bar.StoreChanged += () => _sidebar.Reload();
         _sidebar.StoreChanged += () => _bar.Reload();
@@ -1815,41 +1816,98 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
-    /// 開いているページを「未整理」に入れる。
-    /// 行き先を尋ねないのは意図的で、保存を1クリックにしないと人は取らなくなる。
-    /// 整理はサイドバーで後からやる。
+    /// ★（と Ctrl+D）。Chrome と同じで、押した時点で入れてしまい、窓で名前と場所を直せるようにする。
+    /// 入れ先は前回その窓で選んだフォルダ。初めてなら「未整理」。
+    /// すでに入っているページなら、入れ直さずに「編集」として同じ窓を出す。
     /// </summary>
-    private void AddCurrentPage()
+    private void AddCurrentPage() => ShowBookmarkPopup(null, null);
+
+    private BookmarkPopup? _bmPopup;
+
+    private void ShowBookmarkPopup(string? preferredFolder, Point? screenAt)
     {
         var url = _active.Url;
         if (string.IsNullOrWhiteSpace(url)) return;
 
-        if (FindByUrl(url) is { } existing)
-        {
-            // ★ で消していいのは ★ 自身が入れたもの＝「未整理」の直下だけ。
-            // 取り込んだフォルダの奥にある1件を黙って消すと事故になるので、
-            // そちらは消さずに「どこにあるか」を出すだけにする。
-            if (existing.ParentId == BookmarkStore.RootOther)
-            {
-                _bookmarks.Remove(existing.Id);
-                _bookmarks.Save();
-                _sidebar.Reload();
-                UpdateChrome();
-                return;
-            }
+        _bmPopup?.Close();
 
-            if (!_sidebar.Visible) { _sidebar.Visible = true; _splitter.Visible = true; }
-            _sidebar.Reveal(url);
-            UpdateChrome();
-            return;
+        var node = FindByUrl(url);
+        var isNew = node is null;
+        if (node is null)
+        {
+            var folder = preferredFolder;
+            if (folder is null)
+            {
+                var last = _settings.LastBookmarkFolder;
+                folder = !string.IsNullOrEmpty(last) && _bookmarks.Get(last) is { IsFolder: true, IsDeleted: false }
+                    ? last : BookmarkStore.RootOther;
+            }
+            var title = string.IsNullOrWhiteSpace(_active.Title) ? UrlHelper.HostTitle(url) : _active.Title;
+            node = _bookmarks.AddLink(folder, title, url);
+            _bookmarks.Save();
+            BookmarksChanged();
+            Log.Write($"bookmark added: -> {FolderKind(folder)}");
         }
 
-        var title = string.IsNullOrWhiteSpace(_active.Title) ? UrlHelper.HostTitle(url) : _active.Title;
-        _bookmarks.AddLink(BookmarkStore.RootOther, title, url);
+        var popup = new BookmarkPopup(_bookmarks, node, isNew, DeviceDpi);
+        var target = node;
+        popup.Finished += p => FinishBookmarkPopup(p, target);
+
+        // ★ の真下（バーから呼ばれたときはクリックした位置）に出し、画面からはみ出さないよう寄せる。
+        var at = screenAt ?? _star.PointToScreen(new Point(0, _star.Height + Scale(4)));
+        var size = popup.GetPreferredSize(Size.Empty);
+        var area = Screen.FromPoint(at).WorkingArea;
+        at.X = Math.Clamp(at.X, area.Left, Math.Max(area.Left, area.Right - size.Width));
+        at.Y = Math.Clamp(at.Y, area.Top, Math.Max(area.Top, area.Bottom - size.Height));
+        popup.Location = at;
+
+        _bmPopup = popup;
+        popup.Show(this);
+    }
+
+    private void FinishBookmarkPopup(BookmarkPopup p, BookmarkNode node)
+    {
+        if (ReferenceEquals(_bmPopup, p)) _bmPopup = null;
+
+        if (p.Removed)
+        {
+            _bookmarks.Remove(node.Id);
+            Log.Write("bookmark popup: removed");
+        }
+        else
+        {
+            var title = p.EnteredTitle;
+            if (title.Length > 0 && title != node.Title)
+            {
+                node.Title = title;
+                node.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            var folder = p.ChosenFolderId;
+            var moved = folder != node.ParentId && _bookmarks.MoveToEnd(node.Id, folder);
+            if (_settings.LastBookmarkFolder != folder)
+            {
+                _settings.LastBookmarkFolder = folder;
+                _settings.Save();
+            }
+            Log.Write($"bookmark popup: done{(moved ? $" moved -> {FolderKind(folder)}" : "")}");
+        }
+
         _bookmarks.Save();
+        BookmarksChanged();
+        // p は Show() で出した窓なので、閉じ終わると WinForms が自分で Dispose する。
+    }
+
+    /// <summary>ブックマークを書き換えたあと、バー・サイドバー・★ を描き直す。</summary>
+    private void BookmarksChanged()
+    {
         _sidebar.Reload();
+        _bar.Reload();
         UpdateChrome();
     }
+
+    /// <summary>ログ用。フォルダ名は残さず、バー／未整理／その他だけ。</summary>
+    private static string FolderKind(string id) =>
+        id is BookmarkStore.RootBar or BookmarkStore.RootOther ? id : "folder";
 
     private BookmarkNode? FindByUrl(string? url) =>
         url is null ? null
