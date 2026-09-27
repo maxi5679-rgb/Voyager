@@ -39,6 +39,12 @@ internal sealed class AppSettings
     public bool AskDownloadDir { get; set; }
 
     /// <summary>
+    /// 「毎回たずねる」で最後に選んだフォルダ。次のダイアログはここから開く。
+    /// 空、または消えていたら DownloadDir に戻る。
+    /// </summary>
+    public string LastSaveDir { get; set; } = "";
+
+    /// <summary>
     /// 画面の言語。"ja" か "en"。
     /// いまは設定で明示的に選ぶ。将来 "auto"（Windows の表示言語に従う）を足して
     /// それを既定にする予定なので、bool ではなく文字列にしてある。

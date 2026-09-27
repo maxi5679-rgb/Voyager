@@ -1237,7 +1237,7 @@ internal sealed class MainForm : Form
         {
             Title = Strings.SaveTo,
             FileName = name,
-            InitialDirectory = PreferredDownloadDir(),
+            InitialDirectory = LastOrPreferredDir(),
             OverwritePrompt = true,
         };
 
@@ -1245,6 +1245,14 @@ internal sealed class MainForm : Form
         {
             a.ResultFilePath = dlg.FileName;
             Log.Write($"  -> {Path.GetDirectoryName(dlg.FileName)}");
+
+            // 次のダイアログはここから開く
+            var chosen = Path.GetDirectoryName(dlg.FileName);
+            if (!string.IsNullOrEmpty(chosen) && chosen != _settings.LastSaveDir)
+            {
+                _settings.LastSaveDir = chosen;
+                _settings.Save();
+            }
         }
         else
         {
@@ -1253,7 +1261,23 @@ internal sealed class MainForm : Form
         }
     }
 
-    /// <summary>「毎回たずねる」のダイアログを最初に開く場所。</summary>
+    /// <summary>
+    /// 「毎回たずねる」のダイアログを開く場所。前回選んだフォルダが残っていればそこ、
+    /// 無ければ設定の保存先。
+    /// </summary>
+    private string LastOrPreferredDir()
+    {
+        var last = _settings.LastSaveDir;
+        if (!string.IsNullOrWhiteSpace(last) && Directory.Exists(last))
+        {
+            Log.Write("  save dialog: last folder");
+            return last;
+        }
+        Log.Write("  save dialog: default folder");
+        return PreferredDownloadDir();
+    }
+
+    /// <summary>設定の保存先。無ければユーザーフォルダ。</summary>
     private string PreferredDownloadDir()
     {
         var dir = _settings.DownloadDir;
