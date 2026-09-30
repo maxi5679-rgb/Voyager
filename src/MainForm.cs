@@ -134,6 +134,7 @@ internal sealed class MainForm : Form
     {
         _sidebar = new BookmarkSidebar(_bookmarks) { Visible = _settings.SidebarOpen, LogicalWidth = _settings.SidebarWidth };
         _splitter.Visible = _settings.SidebarOpen;
+        _sidebar.ManageRequested += OpenBookmarkManager;
         _sidebar.OpenRequested += (url, newTab) =>
         {
             if (newTab) NewTab();
@@ -149,8 +150,8 @@ internal sealed class MainForm : Form
         _bar.CurrentPageRequested += () => (_active.Url, _active.Title);
         _bar.AddPageRequested += at => ShowBookmarkPopup(BookmarkStore.RootBar, at);
         // 片方が書き換えたら、もう片方も描き直す。同じストアを 2 つの画面が見ているため。
-        _bar.StoreChanged += () => _sidebar.Reload();
-        _sidebar.StoreChanged += () => _bar.Reload();
+        _bar.StoreChanged += () => { _sidebar.Reload(); RefreshManager(); };
+        _sidebar.StoreChanged += () => { _bar.Reload(); RefreshManager(); };
 
         var topRight = new FlowLayoutPanel
         {
@@ -292,7 +293,8 @@ internal sealed class MainForm : Form
         _tips.SetToolTip(_bmBtn, Strings.BookmarksTip);
 
         // 中身を持たないタブの題名（「新しいタブ」）も入れ直す。
-        foreach (var t in _tabs) if (t.Url is null) t.Title = Strings.NewTab;
+        foreach (var t in _tabs)
+            if (t.Url is null) t.Title = t.Page == BookmarkManager.PageId ? Strings.BookmarkManager : Strings.NewTab;
 
         var omni = _omni.Width;
         LayoutTabs();
@@ -546,7 +548,7 @@ internal sealed class MainForm : Form
     {
         if (_uiView.CoreWebView2 is null) return;
 
-        var showInternal = _settingsOpen || _aboutOpen || _engine is null || _active.Url is null;
+        var showInternal = _settingsOpen || _aboutOpen || _engine is null || _active.Url is null || _active.Page is not null;
 
         foreach (var t in _tabs)
             if (t.View is not null)
@@ -561,6 +563,7 @@ internal sealed class MainForm : Form
             _uiView.CoreWebView2.NavigateToString(
                 LogHtml(_aboutOpen ? Pages.About(_env?.BrowserVersionString)
                         : _settingsOpen ? Pages.Settings(_settings, _engine)
+                        : _active.Page == BookmarkManager.PageId ? Pages.Bookmarks()
                         : _engine is null ? Pages.Picker()
                         : Pages.Start(_engine)));
         }
@@ -733,6 +736,7 @@ internal sealed class MainForm : Form
         if (!UrlHelper.IsNavigable(url)) return;
 
         tab.Url = url;
+        tab.Page = null;
         tab.RequestedUrl = url;
         tab.RequestPending = true;
         tab.Title = UrlHelper.HostTitle(url);
@@ -1036,6 +1040,7 @@ internal sealed class MainForm : Form
     private void ShowStart(BrowserTab tab)
     {
         tab.Url = null;
+        tab.Page = null;
         tab.Title = Strings.NewTab;
         Render();
     }
@@ -1091,6 +1096,12 @@ internal sealed class MainForm : Form
         if (msg.ValueKind != JsonValueKind.Object || !msg.TryGetProperty("type", out var typeProp)) return;
         var type = typeProp.GetString();
         string? Str(string name) => msg.TryGetProperty(name, out var v) ? v.GetString() : null;
+
+        if (type?.StartsWith("bm:", StringComparison.Ordinal) == true)
+        {
+            OnManagerMessage(type, msg);
+            return;
+        }
 
         switch (type)
         {
@@ -1920,6 +1931,150 @@ internal sealed class MainForm : Form
         _sidebar.Reload();
         _bar.Reload();
         UpdateChrome();
+        RefreshManager();
+    }
+
+    // ---------------------------------------------------------------- ブックマークマネージャー
+
+    /// <summary>マネージャーで最後に開いていたフォルダ。開き直したときにそこから始める。</summary>
+    private string _bmFolder = BookmarkStore.RootBar;
+
+    /// <summary>マネージャーで検索中の語。空なら _bmFolder の中身を出している。</summary>
+    private string _bmSearch = "";
+
+    /// <summary>マネージャーのタブを開く。もう開いていればそこへ移るだけ。</summary>
+    private void OpenBookmarkManager()
+    {
+        var tab = _tabs.FirstOrDefault(t => t.Page == BookmarkManager.PageId);
+        if (tab is null)
+        {
+            tab = new BrowserTab { Page = BookmarkManager.PageId, Title = Strings.BookmarkManager };
+            _tabs.Add(tab);
+            RebuildTabStrip();
+        }
+        Log.Write("bookmark manager: open");
+        _active = tab;
+        CloseInternalPages();
+        RebuildTabStrip();
+        Render();
+    }
+
+    private bool ManagerShowing =>
+        _active.Page == BookmarkManager.PageId && !_settingsOpen && !_aboutOpen && _uiView.CoreWebView2 is not null;
+
+    private void PostToManager(object message)
+    {
+        if (!ManagerShowing) return;
+        try { _uiView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message)); }
+        catch (Exception ex) when (ex is COMException or InvalidOperationException) { }
+    }
+
+    /// <summary>木と、いま見ている一覧を送り直す。ほかの場所（★ やサイドバー）で変えたときも呼ぶ。</summary>
+    private void RefreshManager()
+    {
+        if (!ManagerShowing) return;
+        if (_bookmarks.Get(_bmFolder) is not { IsFolder: true, IsDeleted: false }) _bmFolder = BookmarkStore.RootBar;
+        PostToManager(BookmarkManager.Tree(_bookmarks, _bmFolder));
+        PostToManager(_bmSearch.Length > 0
+            ? BookmarkManager.Search(_bookmarks, _bmSearch)
+            : BookmarkManager.Items(_bookmarks, _bmFolder));
+    }
+
+    /// <summary>マネージャーからの bm:* メッセージ。</summary>
+    private void OnManagerMessage(string type, JsonElement msg)
+    {
+        string? Str(string name) => msg.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+        switch (type)
+        {
+            case "bm:init":
+                _bmSearch = "";
+                RefreshManager();
+                return;
+
+            case "bm:list":
+                if (Str("folder") is { } folder && _bookmarks.Get(folder) is { IsFolder: true })
+                {
+                    _bmFolder = folder;
+                    _bmSearch = "";
+                    PostToManager(BookmarkManager.Items(_bookmarks, folder));
+                }
+                return;
+
+            case "bm:search":
+                _bmSearch = Str("q")?.Trim() ?? "";
+                RefreshManager();
+                return;
+
+            case "bm:open":
+                if (_bookmarks.Get(Str("id") ?? "") is { IsLink: true, Url: { } target } && UrlHelper.IsNavigable(target))
+                {
+                    var newTab = msg.TryGetProperty("newTab", out var nt) && nt.ValueKind == JsonValueKind.True;
+                    Log.Write($"bookmark manager: open {(newTab ? "new tab" : "here")}");
+                    if (newTab) OpenInNewTab(target); else Navigate(_active, target);
+                }
+                return;
+
+            case "bm:edit":
+            {
+                if (_bookmarks.Get(Str("id") ?? "") is not { IsDeleted: false } node) return;
+                var title = Str("title")?.Trim() ?? "";
+                if (title.Length == 0) return;
+                string? url = null;
+                if (node.IsLink)
+                {
+                    url = BookmarkManager.NormalizeUrl(Str("url"));
+                    if (url is null)
+                    {
+                        PostToManager(new { type = "bm:error", title = Strings.BmEdit, text = Strings.BmBadUrl });
+                        return;
+                    }
+                }
+                // 取り込み元の名前は画面で差し替えて見せているだけ（「未整理」など）。根は名前を変えさせない。
+                if (node.Id is BookmarkStore.RootBar or BookmarkStore.RootOther) return;
+                node.Title = title;
+                if (url is not null && url != node.Url) { node.Url = url; node.Icon = null; }
+                node.UpdatedAt = DateTimeOffset.UtcNow;
+                _bookmarks.Save();
+                Log.Write($"bookmark manager: edit {node.Kind}");
+                BookmarksChanged();
+                return;
+            }
+
+            case "bm:newFolder":
+            {
+                var parent = Str("parent") ?? _bmFolder;
+                if (_bookmarks.Get(parent) is not { IsFolder: true, IsDeleted: false }) parent = BookmarkStore.RootBar;
+                var title = Str("title")?.Trim();
+                if (string.IsNullOrEmpty(title)) return;
+                _bookmarks.AddFolder(parent, title);
+                _bookmarks.Save();
+                Log.Write("bookmark manager: new folder");
+                BookmarksChanged();
+                return;
+            }
+
+            case "bm:delete":
+            {
+                if (!msg.TryGetProperty("ids", out var ids) || ids.ValueKind != JsonValueKind.Array) return;
+                var n = 0;
+                foreach (var v in ids.EnumerateArray())
+                {
+                    var id = v.GetString();
+                    if (id is null or BookmarkStore.RootBar or BookmarkStore.RootOther) continue;
+                    if (_bookmarks.Get(id) is not { IsDeleted: false } node) continue;
+                    var parent = node.ParentId;
+                    _bookmarks.Remove(id);
+                    if (parent is not null) _bookmarks.Renumber(parent);
+                    n++;
+                }
+                if (n == 0) return;
+                _bookmarks.Save();
+                Log.Write($"bookmark manager: deleted {n}");
+                BookmarksChanged();
+                return;
+            }
+        }
     }
 
     /// <summary>ログ用。フォルダ名は残さず、バー／未整理／その他だけ。</summary>

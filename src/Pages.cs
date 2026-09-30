@@ -17,7 +17,7 @@ internal static class Pages
 
     private static string Shell(string title, string body, bool settingsOpen = false, bool hasEngine = false) => $$"""
         <!doctype html>
-        <html lang="ja"><head><meta charset="utf-8" />
+        <html lang="{{Strings.Current}}"><head><meta charset="utf-8" />
         <meta http-equiv="Content-Security-Policy"
               content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;" />
         <title>{{E(title)}}</title>
@@ -313,5 +313,293 @@ internal static class Pages
               </div>
             </div>
             """, settingsOpen: true, hasEngine: current is not null);
+    }
+
+    /// <summary>
+    /// ブックマークマネージャー。左にフォルダの木、右に中身の一覧。
+    /// 中身はここには入れず、開いたあとに bm:init で頼んで bm:tree / bm:items で受け取る
+    /// （BookmarkManager の説明を参照）。
+    /// </summary>
+    public static string Bookmarks()
+    {
+        var labels = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            search = Strings.SearchBookmarks,
+            newFolder = Strings.NewFolder,
+            newFolderName = Strings.NewFolderName,
+            open = Strings.Open,
+            openNewTab = Strings.OpenInNewTab,
+            edit = Strings.BmEdit,
+            rename = Strings.BmRename,
+            delete = Strings.Delete,
+            name = Strings.BookmarkName,
+            url = Strings.BmUrl,
+            save = Strings.BmSave,
+            cancel = Strings.BmCancel,
+            empty = Strings.BmEmpty,
+            noHits = Strings.BmNoHits,
+            confirmFolder = Strings.BmConfirmFolder,
+            hits = Strings.BmHitsFormat,
+        });
+
+        return Shell(Strings.BookmarkManager, $$"""
+            <style>
+              html, body { height:100%; }
+              body { overflow:hidden; font-size:14px; }
+              .bm { display:flex; flex-direction:column; height:100vh; }
+              .bm-top { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid #2d3228; }
+              .bm-top h1 { font-size:18px; margin:0 12px 0 0; white-space:nowrap; }
+              .bm-top .field { max-width:520px; padding:8px 12px; border-radius:10px; }
+              .btn { padding:8px 14px; border-radius:10px; border:1px solid #2d3228; background:#171912;
+                     color:inherit; font:inherit; cursor:pointer; white-space:nowrap; }
+              .btn:hover { border-color:#7d9a4c; background:#1d2218; }
+              .btn.primary { background:#7d9a4c; border-color:#7d9a4c; color:#0c0d0b; }
+              .btn.danger { border-color:#9a4c4c; }
+              .bm-body { flex:1; display:flex; min-height:0; }
+              #tree { width:300px; flex:none; overflow:auto; padding:8px 6px; border-right:1px solid #2d3228; }
+              #list { flex:1; overflow:auto; padding:6px 10px 40px; }
+              .t-row { display:flex; align-items:center; gap:4px; padding:4px 8px; border-radius:8px; cursor:pointer; white-space:nowrap; }
+              .t-row:hover { background:#1d2218; }
+              .t-row.on { background:#26301b; }
+              .t-tog { width:16px; flex:none; color:#9aa190; text-align:center; }
+              .t-name { overflow:hidden; text-overflow:ellipsis; }
+              .t-count { color:#9aa190; font-size:12px; margin-left:4px; }
+              .row { display:grid; grid-template-columns:22px minmax(0,2fr) minmax(0,3fr); gap:10px; align-items:center;
+                     padding:5px 10px; border-radius:8px; cursor:default; }
+              .row.with-path { grid-template-columns:22px minmax(0,2fr) minmax(0,2fr) minmax(0,1.4fr); }
+              .row:hover { background:#1a1e15; }
+              .row.on { background:#26301b; }
+              .row img { width:16px; height:16px; }
+              .row .ttl, .row .url, .row .path { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+              .row .url, .row .path { color:#9aa190; font-size:12px; }
+              .note { color:#9aa190; padding:18px 10px; }
+              .fold { width:16px; height:12px; border-radius:2px; background:#7d9a4c; opacity:.8; }
+              #modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:10000; }
+              #modal[hidden] { display:none; }
+              .dlg { width:min(520px, 90vw); background:#171912; border:1px solid #2d3228; border-radius:14px; padding:20px; }
+              .dlg h2 { margin:0 0 14px; color:#f3f4ef; font-size:16px; }
+              .dlg label { display:block; color:#9aa190; font-size:12px; margin:10px 0 4px; }
+              .dlg .field { padding:9px 12px; border-radius:10px; -webkit-user-select:text; user-select:text; }
+              .dlg p { margin:0 0 6px; color:#c6cbb8; }
+              .dlg .err { color:#d98c8c; font-size:12px; min-height:16px; margin-top:8px; }
+              .dlg .acts { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+            </style>
+            <div class="bm">
+              <div class="bm-top">
+                <h1>{{E(Strings.BookmarkManager)}}</h1>
+                <input id="q" class="field" type="search" autocomplete="off" />
+                <button id="nf" class="btn">{{E(Strings.NewFolder)}}</button>
+              </div>
+              <div class="bm-body">
+                <nav id="tree"></nav>
+                <section id="list"></section>
+              </div>
+            </div>
+            <div id="modal" hidden></div>
+            <script>
+              const L = {{labels}};
+              let folders = [], current = null, searching = null, items = [], icons = [], sel = null;
+              const open = new Set(['bar', 'other']);
+
+              const q = document.getElementById('q');
+              const tree = document.getElementById('tree');
+              const list = document.getElementById('list');
+              const modal = document.getElementById('modal');
+              q.placeholder = L.search;
+
+              const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+              const parentsOf = (id) => {
+                const out = []; const stack = [];
+                for (const f of folders) {
+                  stack.length = f.depth; stack.push(f.id);
+                  if (f.id === id) { out.push(...stack.slice(0, -1)); break; }
+                }
+                return out;
+              };
+
+              // ---- 木
+              function drawTree() {
+                tree.replaceChildren();
+                let hideBelow = Infinity;
+                for (const f of folders) {
+                  if (f.depth > hideBelow) continue;
+                  hideBelow = Infinity;
+                  const row = el('div', 't-row' + (f.id === current && !searching ? ' on' : ''));
+                  row.style.paddingLeft = (8 + f.depth * 14) + 'px';
+                  const tog = el('span', 't-tog', f.hasSub ? (open.has(f.id) ? '▾' : '▸') : '');
+                  tog.addEventListener('click', (e) => { e.stopPropagation(); if (!f.hasSub) return; open.has(f.id) ? open.delete(f.id) : open.add(f.id); drawTree(); });
+                  row.append(tog, el('span', 't-name', f.title), el('span', 't-count', '(' + f.count.toLocaleString() + ')'));
+                  row.addEventListener('click', () => selectFolder(f.id));
+                  row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); folderMenu(e.clientX, e.clientY, f); });
+                  tree.append(row);
+                  if (f.hasSub && !open.has(f.id)) hideBelow = f.depth;
+                }
+              }
+
+              function selectFolder(id) {
+                current = id; searching = null; q.value = ''; sel = null;
+                for (const p of parentsOf(id)) open.add(p);
+                drawTree();
+                send({ type: 'bm:list', folder: id });
+              }
+
+              // ---- 一覧
+              function drawList() {
+                list.replaceChildren();
+                if (!items.length) { list.append(el('div', 'note', searching ? L.noHits : L.empty)); return; }
+                if (searching) list.append(el('div', 'note', L.hits.replace('{0}', items.length.toLocaleString())));
+                for (const it of items) {
+                  const row = el('div', 'row' + (searching ? ' with-path' : '') + (it.id === sel ? ' on' : ''));
+                  row.dataset.id = it.id;
+                  let ic;
+                  if (it.kind === 'folder') ic = el('div', 'fold');
+                  else if (it.icon >= 0) { ic = el('img'); ic.src = icons[it.icon]; ic.alt = ''; }
+                  else ic = el('span');
+                  row.append(ic, el('div', 'ttl', it.kind === 'folder' ? it.title + '  (' + it.count + ')' : it.title));
+                  row.append(el('div', 'url', it.kind === 'folder' ? '' : (it.url || '')));
+                  if (searching) row.append(el('div', 'path', it.path || ''));
+                  if (it.url) row.title = it.title + '\n' + it.url;
+                  row.addEventListener('click', () => { sel = it.id; mark(); });
+                  row.addEventListener('dblclick', () => activate(it, true));
+                  row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); sel = it.id; mark(); itemMenu(e.clientX, e.clientY, it); });
+                  list.append(row);
+                }
+              }
+              function mark() { for (const r of list.querySelectorAll('.row')) r.classList.toggle('on', r.dataset.id === sel); }
+              const selected = () => items.find(i => i.id === sel);
+
+              function activate(it, newTab) {
+                if (it.kind === 'folder') { selectFolder(it.id); return; }
+                send({ type: 'bm:open', id: it.id, newTab });
+              }
+
+              // ---- メニュー（Shell の #ctx と同じ見た目・同じ閉じ方）
+              function showMenu(x, y, rows) {
+                closeMenu();
+                const box = el('div'); box.id = 'ctx';
+                for (const r of rows) {
+                  if (!r) { box.append(el('div', 'sep')); continue; }
+                  const item = el('div', 'item', r[0]);
+                  item.addEventListener('mousedown', (e) => { e.preventDefault(); closeMenu(); r[1](); });
+                  box.append(item);
+                }
+                document.body.append(box);
+                box.style.left = Math.min(x, innerWidth - box.offsetWidth - 8) + 'px';
+                box.style.top = Math.min(y, innerHeight - box.offsetHeight - 8) + 'px';
+                menuEl = box;
+              }
+              const isRoot = (id) => id === 'bar' || id === 'other';
+
+              function itemMenu(x, y, it) {
+                if (it.kind === 'folder') {
+                  showMenu(x, y, [[L.open, () => selectFolder(it.id)], null,
+                    [L.rename, () => editDialog(it)], [L.delete, () => remove(it)]]);
+                } else {
+                  showMenu(x, y, [[L.open, () => activate(it, false)], [L.openNewTab, () => activate(it, true)], null,
+                    [L.edit, () => editDialog(it)], [L.delete, () => remove(it)]]);
+                }
+              }
+              function folderMenu(x, y, f) {
+                const rows = [[L.newFolder, () => newFolderDialog(f.id)]];
+                if (!isRoot(f.id)) rows.push(null, [L.rename, () => editDialog({ id: f.id, kind: 'folder', title: f.title })], [L.delete, () => remove({ id: f.id, kind: 'folder', title: f.title, count: f.count })]);
+                showMenu(x, y, rows);
+              }
+
+              // ---- 小窓
+              function dialog(title, fields, okLabel, onOk, danger, message) {
+                modal.replaceChildren();
+                const box = el('div', 'dlg');
+                box.append(el('h2', null, title));
+                if (message) box.append(el('p', null, message));
+                const inputs = {};
+                for (const f of fields) {
+                  box.append(el('label', null, f.label));
+                  const inp = el('input', 'field'); inp.value = f.value || ''; inp.spellcheck = false;
+                  inputs[f.key] = inp; box.append(inp);
+                }
+                const err = el('div', 'err'); box.append(err);
+                const acts = el('div', 'acts');
+                const cancel = el('button', 'btn', L.cancel);
+                const ok = el('button', 'btn ' + (danger ? 'danger' : 'primary'), okLabel);
+                acts.append(cancel, ok); box.append(acts);
+                modal.append(box); modal.hidden = false;
+                const close = () => { modal.hidden = true; modal.replaceChildren(); };
+                const submit = () => {
+                  const v = {}; for (const k in inputs) v[k] = inputs[k].value.trim();
+                  const bad = onOk(v); if (bad) { err.textContent = bad; return; }
+                  close();
+                };
+                cancel.addEventListener('click', close);
+                ok.addEventListener('click', submit);
+                box.addEventListener('keydown', (e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submit(); }
+                  if (e.key === 'Escape') { e.preventDefault(); close(); }
+                });
+                const first = Object.values(inputs)[0];
+                if (first) { first.focus(); first.select(); } else ok.focus();
+              }
+
+              function editDialog(it) {
+                const fields = [{ key: 'title', label: L.name, value: it.title }];
+                if (it.kind !== 'folder') fields.push({ key: 'url', label: L.url, value: it.url });
+                dialog(it.kind === 'folder' ? L.rename : L.edit, fields, L.save, (v) => {
+                  if (!v.title) return L.name;
+                  send({ type: 'bm:edit', id: it.id, title: v.title, url: v.url });
+                });
+              }
+              function newFolderDialog(parent) {
+                dialog(L.newFolder, [{ key: 'title', label: L.name, value: L.newFolderName }], L.save, (v) => {
+                  if (!v.title) return L.name;
+                  send({ type: 'bm:newFolder', parent, title: v.title });
+                });
+              }
+              function remove(it) {
+                if (it.kind === 'folder' && it.count > 0) {
+                  dialog(L.delete, [], L.delete, () => { send({ type: 'bm:delete', ids: [it.id] }); }, true,
+                         L.confirmFolder.replace('{0}', it.title));
+                } else send({ type: 'bm:delete', ids: [it.id] });
+              }
+
+              // ---- 操作
+              document.getElementById('nf').addEventListener('click', () => newFolderDialog(current || 'bar'));
+              list.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); if (!searching) showMenu(e.clientX, e.clientY, [[L.newFolder, () => newFolderDialog(current)]]); });
+              let timer = 0;
+              q.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                  const text = q.value.trim();
+                  if (!text) { selectFolder(current || 'bar'); return; }
+                  searching = text; sel = null; drawTree();
+                  send({ type: 'bm:search', q: text });
+                }, 200);
+              });
+              document.addEventListener('keydown', (e) => {
+                if (!modal.hidden || e.target === q) return;
+                const it = selected(); if (!it) return;
+                if (e.key === 'Enter') activate(it, true);
+                else if (e.key === 'F2') editDialog(it);
+                else if (e.key === 'Delete') remove(it);
+              });
+
+              // ---- アプリから
+              window.chrome?.webview?.addEventListener('message', (e) => {
+                const m = e.data;
+                if (m.type === 'bm:tree') {
+                  folders = m.folders;
+                  if (!current) { current = m.selected; for (const p of parentsOf(current)) open.add(p); }
+                  if (!folders.some(f => f.id === current)) current = 'bar';
+                  drawTree();
+                } else if (m.type === 'bm:items') {
+                  if ((m.search || null) !== searching || (!m.search && m.folder !== current)) return; // 古い返事
+                  items = m.items; icons = m.icons;
+                  if (!items.some(i => i.id === sel)) sel = null;
+                  drawList();
+                } else if (m.type === 'bm:error') {
+                  dialog(m.title || '', [], 'OK', () => {}, false, m.text);
+                }
+              });
+              window.addEventListener('DOMContentLoaded', () => send({ type: 'bm:init' }));
+            </script>
+            """);
     }
 }

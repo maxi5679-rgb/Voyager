@@ -97,6 +97,20 @@ internal static class Strings
     public static string MoveToUnsorted => T("未整理へ移す", "Move to unsorted");
     public static string RemoveFromBar => T("バーから削除", "Remove from bar");
     public static string AddThisPage => T("このページを追加", "Add this page");
+    public static string BookmarkManager => T("ブックマークマネージャー", "Bookmark manager");
+    public static string ManageBookmarks => T("管理", "Manage");
+    public static string ManageBookmarksTip => T("ブックマークマネージャーを開く", "Open the bookmark manager");
+    public static string BmEdit => T("編集", "Edit");
+    public static string BmRename => T("名前を変更", "Rename");
+    public static string BmUrl => T("アドレス", "Address");
+    public static string BmSave => T("保存", "Save");
+    public static string BmCancel => T("キャンセル", "Cancel");
+    public static string BmEmpty => T("このフォルダは空です", "This folder is empty");
+    public static string BmNoHits => T("見つかりませんでした", "No matches");
+    public static string BmHitsFormat => T("{0} 件", "{0} found");
+    public static string BmConfirmFolder => T("「{0}」とその中身をすべて削除します。", "This deletes “{0}” and everything in it.");
+    public static string BmBadUrl => T("アドレスが正しくありません。http:// か https:// で始まるものか、example.com の形で入れてください。",
+                                       "That address is not valid. Use one starting with http:// or https://, or like example.com.");
     public static string BookmarkAdded => T("ブックマークに追加しました", "Bookmark added");
     public static string BookmarkEdit => T("ブックマークを編集", "Edit bookmark");
     public static string BookmarkName => T("名前", "Name");

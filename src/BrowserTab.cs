@@ -8,8 +8,14 @@ internal sealed class BrowserTab
 
     public string Title { get; set; } = Strings.NewTab;
 
-    /// <summary>null なら内部ページ（スタート画面）を表示している。</summary>
+    /// <summary>null なら内部ページ（スタート画面など）を表示している。</summary>
     public string? Url { get; set; }
+
+    /// <summary>
+    /// サイトではなく内部ページを出すタブ。いまは BookmarkManager.PageId だけ。
+    /// null なら普通のタブ（Url が null ならスタート画面）。
+    /// </summary>
+    public string? Page { get; set; }
 
     /// <summary>
     /// タブごとに 1 つ持ち、タブを切り替えても破棄しない。

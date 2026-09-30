@@ -24,6 +24,9 @@ internal sealed class BookmarkSidebar : Panel
     /// <summary>url, 新しいタブで開くか</summary>
     public event Action<string, bool>? OpenRequested;
 
+    /// <summary>「管理」ボタン。ブックマークマネージャーのタブを開いてほしい。</summary>
+    public event Action? ManageRequested;
+
     /// <summary>ストアを書き換えた。ブックマークバー側も描き直してほしい。</summary>
     public event Action? StoreChanged;
 
@@ -108,6 +111,16 @@ internal sealed class BookmarkSidebar : Panel
         };
         tools.Controls.Add(SmallButton(Strings.Import, Strings.ImportTip, (_, _) => ImportDialog()));
         tools.Controls.Add(SmallButton(Strings.Export, Strings.ExportTip, (_, _) => ExportDialog()));
+        tools.Controls.Add(SmallButton(Strings.ManageBookmarks, Strings.ManageBookmarksTip, (_, _) => ManageRequested?.Invoke()));
+
+        // ボタンは 3 つを横に等分する。幅を決め打ちにすると、既定の幅（208）では 3 つ目が
+        // はみ出して見えなくなり、拡大率を上げたときは逆に余る。
+        tools.Resize += (_, _) =>
+        {
+            var gap = tools.Controls.Count > 0 ? tools.Controls[0].Margin.Right : 0;
+            var w = Math.Max(40, (tools.ClientSize.Width - tools.Padding.Horizontal - gap * tools.Controls.Count) / Math.Max(1, tools.Controls.Count));
+            foreach (Control c in tools.Controls) c.Width = w;
+        };
 
         // Fill を先に、端に寄せるものを後に。順序が配置を決める。
         Controls.Add(_tree);
