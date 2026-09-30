@@ -951,6 +951,15 @@ internal sealed class MainForm : Form
 
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
+
+            // await の間にページが移ると、上で拾った targets（移動前の URL のブックマーク）に
+            // 移動先の絵を書いてしまう。Yahoo! から別サイトへ移ると Yahoo! の
+            // ブックマークが移動先のファビコンになるのはこれ。取り直しは次のイベントに任せる。
+            if (core.Source != url)
+            {
+                Log.Write($"favicon: page moved, skipped ({Log.Url(url)} -> {Log.Url(core.Source)})");
+                return;
+            }
             // 空や、明らかに大きすぎるものは入れない（bookmarks.json が膨らむ）
             if (buffer.Length == 0 || buffer.Length > 64 * 1024)
             {
