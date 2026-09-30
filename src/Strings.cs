@@ -102,6 +102,7 @@ internal static class Strings
     public static string ManageBookmarksTip => T("ブックマークマネージャーを開く", "Open the bookmark manager");
     public static string BmEdit => T("編集", "Edit");
     public static string BmRename => T("名前を変更", "Rename");
+    public static string BmCopyUrl => T("アドレスをコピー", "Copy address");
     public static string BmUrl => T("アドレス", "Address");
     public static string BmSave => T("保存", "Save");
     public static string BmCancel => T("キャンセル", "Cancel");

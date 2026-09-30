@@ -329,6 +329,7 @@ internal static class Pages
             newFolderName = Strings.NewFolderName,
             open = Strings.Open,
             openNewTab = Strings.OpenInNewTab,
+            copyUrl = Strings.BmCopyUrl,
             edit = Strings.BmEdit,
             rename = Strings.BmRename,
             delete = Strings.Delete,
@@ -374,7 +375,8 @@ internal static class Pages
               .row .url, .row .path { color:#9aa190; font-size:12px; }
               .note { color:#9aa190; padding:18px 10px; }
               .fold { width:16px; height:12px; border-radius:2px; background:#7d9a4c; opacity:.8; }
-              #modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:10000; }
+              /* 右クリックメニュー（#ctx, z-index 9999）より奥に置く。小窓の入力欄でも貼り付けメニューが見えるように。 */
+              #modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:9000; }
               #modal[hidden] { display:none; }
               .dlg { width:min(520px, 90vw); background:#171912; border:1px solid #2d3228; border-radius:14px; padding:20px; }
               .dlg h2 { margin:0 0 14px; color:#f3f4ef; font-size:16px; }
@@ -496,6 +498,7 @@ internal static class Pages
                     [L.rename, () => editDialog(it)], [L.delete, () => remove(it)]]);
                 } else {
                   showMenu(x, y, [[L.open, () => activate(it, false)], [L.openNewTab, () => activate(it, true)], null,
+                    [L.copyUrl, () => send({ type: 'clip', text: it.url || '' })], null,
                     [L.edit, () => editDialog(it)], [L.delete, () => remove(it)]]);
                 }
               }

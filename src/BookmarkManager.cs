@@ -107,8 +107,18 @@ internal static class BookmarkManager
     {
         var t = (raw ?? "").Trim();
         if (t.Length == 0 || t.Contains(' ')) return null;
-        if (UrlHelper.IsNavigable(t)) return new Uri(t).ToString();
-        var withScheme = "https://" + t;
-        return t.Contains('.') && UrlHelper.IsNavigable(withScheme) ? new Uri(withScheme).ToString() : null;
+
+        if (Uri.TryCreate(t, UriKind.Absolute, out var u) && UrlHelper.IsNavigable(t))
+            return GoodHost(u) ? u.ToString() : null;
+        if (t.Contains("://")) return null;   // ftp:// など、http / https 以外
+
+        // スキームを省いたもの。頭に https:// を足すだけだと、「https//example.com」（: 抜け）が
+        // 「https」というホストとして通ってしまう。ホスト名にドットがあるかで見分ける。
+        return Uri.TryCreate("https://" + t, UriKind.Absolute, out var w) && GoodHost(w) ? w.ToString() : null;
     }
+
+    private static bool GoodHost(Uri u) =>
+        u.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6
+        || u.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || (u.Host.Contains('.') && !u.Host.StartsWith('.') && !u.Host.EndsWith('.'));
 }
