@@ -734,6 +734,7 @@ internal sealed class MainForm : Form
 
         tab.Url = url;
         tab.RequestedUrl = url;
+        tab.RequestPending = true;
         tab.Title = UrlHelper.HostTitle(url);
         CloseInternalPages();
         _omniEditing = false;
@@ -821,7 +822,8 @@ internal sealed class MainForm : Form
         {
             CloseMenu();
             // http / https 以外（file: など）は開かない
-            if (!UrlHelper.IsNavigable(a.Uri)) a.Cancel = true;
+            if (!UrlHelper.IsNavigable(a.Uri)) { a.Cancel = true; return; }
+            TrackRequested(tab, a);
         };
         core.NewWindowRequested += (_, a) =>
         {
@@ -911,6 +913,21 @@ internal sealed class MainForm : Form
             Log.Write($"ctx probe: {r}");
         }
         catch (COMException) { }
+    }
+
+    /// <summary>
+    /// RequestedUrl を、こちらが指示した遷移とそのリダイレクトの間だけ生かす。
+    ///   リダイレクト              → そのまま（twitter.com → x.com を追うため）
+    ///   指示した遷移の最初の 1 回 → 印を下ろすだけ
+    ///   それ以外の新しい遷移      → リンク・戻る・再読み込みなど。消す
+    /// </summary>
+    private static void TrackRequested(BrowserTab tab, CoreWebView2NavigationStartingEventArgs a)
+    {
+        if (a.IsRedirected) return;
+        if (tab.RequestPending) { tab.RequestPending = false; return; }
+        if (tab.RequestedUrl is null) return;
+        Log.Write($"requested cleared: new navigation to {Log.Url(a.Uri)}");
+        tab.RequestedUrl = null;
     }
 
     /// <summary>

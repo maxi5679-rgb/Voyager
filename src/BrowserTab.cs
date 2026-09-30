@@ -23,11 +23,18 @@ internal sealed class BrowserTab
     public string? ContextScriptId { get; set; }
 
     /// <summary>
-    /// このタブに最初に指示した URL。リダイレクト先とは違うことがある
+    /// このタブに最後に指示した URL。リダイレクト先とは違うことがある
     /// （twitter.com/... を開くと x.com/... に飛ばされる、など）。
-    /// ブックマークに入っているのはリダイレクト前の方なので、照合に使う。
+    /// ブックマークに入っているのはリダイレクト前の方なので、ファビコンの照合に使う。
+    ///
+    /// 使ってよいのは、その指示から始まったリダイレクトの間だけ。ページ内のリンクで
+    /// 別のページへ移ったら消す（MainForm.TrackRequested）。消さずにいると、
+    /// Yahoo! から辿った先のサイトのファビコンが Yahoo! のブックマークに書き込まれた。
     /// </summary>
     public string? RequestedUrl { get; set; }
+
+    /// <summary>RequestedUrl を指示した直後で、その遷移の NavigationStarting をまだ見ていない。</summary>
+    public bool RequestPending { get; set; }
 
     public bool IsReady => View?.CoreWebView2 is not null;
 }
