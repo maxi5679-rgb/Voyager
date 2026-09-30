@@ -340,7 +340,15 @@ internal static class Pages
             empty = Strings.BmEmpty,
             noHits = Strings.BmNoHits,
             confirmFolder = Strings.BmConfirmFolder,
+            confirmMany = Strings.BmConfirmMany,
             hits = Strings.BmHitsFormat,
+            moveTo = Strings.BmMoveTo,
+            moveN = Strings.BmMoveN,
+            deleteN = Strings.BmDeleteN,
+            move = Strings.BmMove,
+            selected = Strings.BmSelected,
+            deleted = Strings.BmDeleted,
+            undo = Strings.BmUndo,
         });
 
         return Shell(Strings.BookmarkManager, $$"""
@@ -351,6 +359,7 @@ internal static class Pages
               .bm-top { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid #2d3228; }
               .bm-top h1 { font-size:18px; margin:0 12px 0 0; white-space:nowrap; }
               .bm-top .field { max-width:520px; padding:8px 12px; border-radius:10px; }
+              .bm-top .count { color:#9aa190; font-size:12px; white-space:nowrap; }
               .btn { padding:8px 14px; border-radius:10px; border:1px solid #2d3228; background:#171912;
                      color:inherit; font:inherit; cursor:pointer; white-space:nowrap; }
               .btn:hover { border-color:#7d9a4c; background:#1d2218; }
@@ -385,12 +394,18 @@ internal static class Pages
               .dlg p { margin:0 0 6px; color:#c6cbb8; }
               .dlg .err { color:#d98c8c; font-size:12px; min-height:16px; margin-top:8px; }
               .dlg .acts { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+              .dlg .pick { max-height:50vh; overflow:auto; border:1px solid #2d3228; border-radius:10px; padding:6px; }
+              #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:8000;
+                       display:flex; align-items:center; gap:14px; padding:10px 16px; border-radius:12px;
+                       background:#171912; border:1px solid #2d3228; box-shadow:0 12px 32px rgba(0,0,0,.55); }
+              #toast[hidden] { display:none; }
             </style>
             <div class="bm">
               <div class="bm-top">
                 <h1>{{E(Strings.BookmarkManager)}}</h1>
                 <input id="q" class="field" type="search" autocomplete="off" />
                 <button id="nf" class="btn">{{E(Strings.NewFolder)}}</button>
+                <span id="count" class="count"></span>
               </div>
               <div class="bm-body">
                 <nav id="tree"></nav>
@@ -398,25 +413,31 @@ internal static class Pages
               </div>
             </div>
             <div id="modal" hidden></div>
+            <div id="toast" hidden></div>
             <script>
               const L = {{labels}};
-              let folders = [], current = null, searching = null, items = [], icons = [], sel = null;
+              let folders = [], current = null, searching = null, items = [], icons = [];
+              let picked = new Set(), anchor = -1;   // 選んでいる id と、Shift で範囲を取るときの起点
               const open = new Set(['bar', 'other']);
 
               const q = document.getElementById('q');
               const tree = document.getElementById('tree');
               const list = document.getElementById('list');
               const modal = document.getElementById('modal');
+              const toast = document.getElementById('toast');
+              const count = document.getElementById('count');
               q.placeholder = L.search;
 
               const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+              const fmt = (s, n) => s.replace('{0}', Number(n).toLocaleString());
+              const isRoot = (id) => id === 'bar' || id === 'other';
               const parentsOf = (id) => {
-                const out = []; const stack = [];
+                const stack = [];
                 for (const f of folders) {
                   stack.length = f.depth; stack.push(f.id);
-                  if (f.id === id) { out.push(...stack.slice(0, -1)); break; }
+                  if (f.id === id) return stack.slice(0, -1);
                 }
-                return out;
+                return [];
               };
 
               // ---- 木
@@ -439,7 +460,7 @@ internal static class Pages
               }
 
               function selectFolder(id) {
-                current = id; searching = null; q.value = ''; sel = null;
+                current = id; searching = null; q.value = ''; picked.clear(); anchor = -1;
                 for (const p of parentsOf(id)) open.add(p);
                 drawTree();
                 send({ type: 'bm:list', folder: id });
@@ -448,10 +469,10 @@ internal static class Pages
               // ---- 一覧
               function drawList() {
                 list.replaceChildren();
-                if (!items.length) { list.append(el('div', 'note', searching ? L.noHits : L.empty)); return; }
-                if (searching) list.append(el('div', 'note', L.hits.replace('{0}', items.length.toLocaleString())));
-                for (const it of items) {
-                  const row = el('div', 'row' + (searching ? ' with-path' : '') + (it.id === sel ? ' on' : ''));
+                if (!items.length) { list.append(el('div', 'note', searching ? L.noHits : L.empty)); showCount(); return; }
+                if (searching) list.append(el('div', 'note', fmt(L.hits, items.length)));
+                items.forEach((it, i) => {
+                  const row = el('div', 'row' + (searching ? ' with-path' : ''));
                   row.dataset.id = it.id;
                   let ic;
                   if (it.kind === 'folder') ic = el('div', 'fold');
@@ -461,14 +482,40 @@ internal static class Pages
                   row.append(el('div', 'url', it.kind === 'folder' ? '' : (it.url || '')));
                   if (searching) row.append(el('div', 'path', it.path || ''));
                   if (it.url) row.title = it.title + '\n' + it.url;
-                  row.addEventListener('click', () => { sel = it.id; mark(); });
+                  row.addEventListener('mousedown', (e) => { if (e.button === 0) choose(i, e.ctrlKey, e.shiftKey); });
                   row.addEventListener('dblclick', () => activate(it, true));
-                  row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); sel = it.id; mark(); itemMenu(e.clientX, e.clientY, it); });
+                  row.addEventListener('contextmenu', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (!picked.has(it.id)) choose(i, false, false);
+                    itemMenu(e.clientX, e.clientY, it);
+                  });
                   list.append(row);
-                }
+                });
+                mark();
               }
-              function mark() { for (const r of list.querySelectorAll('.row')) r.classList.toggle('on', r.dataset.id === sel); }
-              const selected = () => items.find(i => i.id === sel);
+
+              // クリックでの選び方。普通は 1 件、Ctrl で足し引き、Shift で起点からの範囲。
+              function choose(i, ctrl, shift) {
+                const id = items[i].id;
+                if (shift && anchor >= 0) {
+                  if (!ctrl) picked.clear();
+                  const [a, b] = anchor < i ? [anchor, i] : [i, anchor];
+                  for (let k = a; k <= b; k++) picked.add(items[k].id);
+                } else if (ctrl) {
+                  picked.has(id) ? picked.delete(id) : picked.add(id);
+                  anchor = i;
+                } else {
+                  picked = new Set([id]);
+                  anchor = i;
+                }
+                mark();
+              }
+              function mark() {
+                for (const r of list.querySelectorAll('.row')) r.classList.toggle('on', picked.has(r.dataset.id));
+                showCount();
+              }
+              function showCount() { count.textContent = picked.size > 1 ? fmt(L.selected, picked.size) : ''; }
+              const pickedItems = () => items.filter(i => picked.has(i.id));
 
               function activate(it, newTab) {
                 if (it.kind === 'folder') { selectFolder(it.id); return; }
@@ -490,26 +537,31 @@ internal static class Pages
                 box.style.top = Math.min(y, innerHeight - box.offsetHeight - 8) + 'px';
                 menuEl = box;
               }
-              const isRoot = (id) => id === 'bar' || id === 'other';
 
               function itemMenu(x, y, it) {
-                if (it.kind === 'folder') {
+                const sel = pickedItems();
+                if (sel.length > 1) {
+                  showMenu(x, y, [[fmt(L.moveN, sel.length), () => moveDialog(sel)], null, [fmt(L.deleteN, sel.length), () => remove(sel)]]);
+                } else if (it.kind === 'folder') {
                   showMenu(x, y, [[L.open, () => selectFolder(it.id)], null,
-                    [L.rename, () => editDialog(it)], [L.delete, () => remove(it)]]);
+                    [L.rename, () => editDialog(it)], [L.moveTo, () => moveDialog([it])], [L.delete, () => remove([it])]]);
                 } else {
                   showMenu(x, y, [[L.open, () => activate(it, false)], [L.openNewTab, () => activate(it, true)], null,
                     [L.copyUrl, () => send({ type: 'clip', text: it.url || '' })], null,
-                    [L.edit, () => editDialog(it)], [L.delete, () => remove(it)]]);
+                    [L.edit, () => editDialog(it)], [L.moveTo, () => moveDialog([it])], [L.delete, () => remove([it])]]);
                 }
               }
               function folderMenu(x, y, f) {
                 const rows = [[L.newFolder, () => newFolderDialog(f.id)]];
-                if (!isRoot(f.id)) rows.push(null, [L.rename, () => editDialog({ id: f.id, kind: 'folder', title: f.title })], [L.delete, () => remove({ id: f.id, kind: 'folder', title: f.title, count: f.count })]);
+                if (!isRoot(f.id)) {
+                  const it = { id: f.id, kind: 'folder', title: f.title, count: f.count };
+                  rows.push(null, [L.rename, () => editDialog(it)], [L.moveTo, () => moveDialog([it])], [L.delete, () => remove([it])]);
+                }
                 showMenu(x, y, rows);
               }
 
               // ---- 小窓
-              function dialog(title, fields, okLabel, onOk, danger, message) {
+              function dialog(title, fields, okLabel, onOk, danger, message, extra) {
                 modal.replaceChildren();
                 const box = el('div', 'dlg');
                 box.append(el('h2', null, title));
@@ -520,6 +572,7 @@ internal static class Pages
                   const inp = el('input', 'field'); inp.value = f.value || ''; inp.spellcheck = false;
                   inputs[f.key] = inp; box.append(inp);
                 }
+                if (extra) box.append(extra);
                 const err = el('div', 'err'); box.append(err);
                 const acts = el('div', 'acts');
                 const cancel = el('button', 'btn', L.cancel);
@@ -556,32 +609,73 @@ internal static class Pages
                   send({ type: 'bm:newFolder', parent, title: v.title });
                 });
               }
-              function remove(it) {
-                if (it.kind === 'folder' && it.count > 0) {
-                  dialog(L.delete, [], L.delete, () => { send({ type: 'bm:delete', ids: [it.id] }); }, true,
-                         L.confirmFolder.replace('{0}', it.title));
-                } else send({ type: 'bm:delete', ids: [it.id] });
+
+              // 行き先を選ぶ小窓。動かすフォルダ自身とその下は出さない（自分の中へは入れられない）。
+              function moveDialog(sel) {
+                const moving = new Set(sel.filter(i => i.kind === 'folder').map(i => i.id));
+                const pick = el('div', 'pick');
+                let target = null, skipBelow = Infinity;
+                for (const f of folders) {
+                  if (f.depth > skipBelow) continue;
+                  skipBelow = Infinity;
+                  if (moving.has(f.id)) { skipBelow = f.depth; continue; }
+                  const row = el('div', 't-row');
+                  row.style.paddingLeft = (8 + f.depth * 14) + 'px';
+                  row.append(el('span', 't-name', f.title));
+                  row.addEventListener('click', () => { target = f.id; for (const r of pick.children) r.classList.remove('on'); row.classList.add('on'); });
+                  row.addEventListener('dblclick', () => { target = f.id; modal.querySelector('.btn.primary').click(); });
+                  pick.append(row);
+                }
+                const title = sel.length > 1 ? fmt(L.moveN, sel.length) : L.moveTo;
+                dialog(title, [], L.move, () => {
+                  if (!target) return L.moveTo;
+                  send({ type: 'bm:move', ids: sel.map(i => i.id), to: target });
+                }, false, null, pick);
+              }
+
+              function remove(sel) {
+                sel = sel.filter(i => !isRoot(i.id));
+                if (!sel.length) return;
+                const heavy = sel.filter(i => i.kind === 'folder' && i.count > 0);
+                const go = () => send({ type: 'bm:delete', ids: sel.map(i => i.id) });
+                if (!heavy.length) { go(); return; }
+                const msg = sel.length === 1 ? L.confirmFolder.replace('{0}', sel[0].title) : fmt(L.confirmMany, sel.length);
+                dialog(L.delete, [], L.delete, () => { go(); }, true, msg);
+              }
+
+              // ---- 消したあとの「元に戻す」
+              let toastTimer = 0;
+              function showUndo(token, n) {
+                clearTimeout(toastTimer);
+                toast.replaceChildren(el('span', null, fmt(L.deleted, n)));
+                const b = el('button', 'btn', L.undo);
+                b.addEventListener('click', () => { send({ type: 'bm:undo', token }); toast.hidden = true; });
+                toast.append(b);
+                toast.hidden = false;
+                toastTimer = setTimeout(() => { toast.hidden = true; }, 10000);
               }
 
               // ---- 操作
               document.getElementById('nf').addEventListener('click', () => newFolderDialog(current || 'bar'));
               list.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); if (!searching) showMenu(e.clientX, e.clientY, [[L.newFolder, () => newFolderDialog(current)]]); });
+              list.addEventListener('mousedown', (e) => { if (e.button === 0 && e.target === list) { picked.clear(); anchor = -1; mark(); } });
               let timer = 0;
               q.addEventListener('input', () => {
                 clearTimeout(timer);
                 timer = setTimeout(() => {
                   const text = q.value.trim();
                   if (!text) { selectFolder(current || 'bar'); return; }
-                  searching = text; sel = null; drawTree();
+                  searching = text; picked.clear(); anchor = -1; drawTree();
                   send({ type: 'bm:search', q: text });
                 }, 200);
               });
               document.addEventListener('keydown', (e) => {
                 if (!modal.hidden || e.target === q) return;
-                const it = selected(); if (!it) return;
-                if (e.key === 'Enter') activate(it, true);
-                else if (e.key === 'F2') editDialog(it);
-                else if (e.key === 'Delete') remove(it);
+                if (e.key === 'a' && e.ctrlKey) { e.preventDefault(); picked = new Set(items.map(i => i.id)); mark(); return; }
+                const sel = pickedItems(); if (!sel.length) return;
+                if (e.key === 'Delete') remove(sel);
+                else if (sel.length === 1 && e.key === 'Enter') activate(sel[0], true);
+                else if (sel.length === 1 && e.key === 'F2') editDialog(sel[0]);
               });
 
               // ---- アプリから
@@ -595,8 +689,12 @@ internal static class Pages
                 } else if (m.type === 'bm:items') {
                   if ((m.search || null) !== searching || (!m.search && m.folder !== current)) return; // 古い返事
                   items = m.items; icons = m.icons;
-                  if (!items.some(i => i.id === sel)) sel = null;
+                  const alive = new Set(items.map(i => i.id));
+                  picked = new Set([...picked].filter(id => alive.has(id)));
+                  anchor = -1;
                   drawList();
+                } else if (m.type === 'bm:deleted') {
+                  showUndo(m.token, m.count);
                 } else if (m.type === 'bm:error') {
                   dialog(m.title || '', [], 'OK', () => {}, false, m.text);
                 }

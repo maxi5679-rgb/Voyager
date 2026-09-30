@@ -102,6 +102,15 @@ internal static class Strings
     public static string ManageBookmarksTip => T("ブックマークマネージャーを開く", "Open the bookmark manager");
     public static string BmEdit => T("編集", "Edit");
     public static string BmRename => T("名前を変更", "Rename");
+    public static string BmMoveTo => T("フォルダへ移動…", "Move to folder…");
+    public static string BmMoveN => T("{0} 件をフォルダへ移動…", "Move {0} to folder…");
+    public static string BmDeleteN => T("{0} 件を削除", "Delete {0}");
+    public static string BmMove => T("移動", "Move");
+    public static string BmSelected => T("{0} 件選択中", "{0} selected");
+    public static string BmDeleted => T("{0} 件を削除しました", "Deleted {0}");
+    public static string BmUndo => T("元に戻す", "Undo");
+    public static string BmConfirmMany => T("{0} 件を削除します。選んだフォルダの中身も一緒に消えます。",
+                                           "This deletes {0} items, including everything inside the chosen folders.");
     public static string BmCopyUrl => T("アドレスをコピー", "Copy address");
     public static string BmUrl => T("アドレス", "Address");
     public static string BmSave => T("保存", "Save");

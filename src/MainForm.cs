@@ -366,7 +366,20 @@ internal sealed class MainForm : Form
                 // 「通信を伴うスキームだけを止める」形にする。
                 if (Uri.TryCreate(a.Uri, UriKind.Absolute, out var u) &&
                     u.Scheme is "http" or "https" or "file" or "ftp")
+                {
                     a.Cancel = true;
+                    return;
+                }
+
+                // 内部ページの履歴はアプリの状態と合っていない。マウスの「戻る」ボタンなどで
+                // WebView2 が自分で前の内部ページへ戻ると、マネージャーのタブなのに AI の画面が出る。
+                // 履歴移動は止めて、アプリとしての「戻る」に置き換える。
+                if (a.NavigationKind == CoreWebView2NavigationKind.BackOrForward)
+                {
+                    a.Cancel = true;
+                    Log.Write("internal page: back/forward blocked");
+                    BeginInvoke(InternalBack);
+                }
             };
             Render();
         }
@@ -1942,9 +1955,33 @@ internal sealed class MainForm : Form
     /// <summary>マネージャーで検索中の語。空なら _bmFolder の中身を出している。</summary>
     private string _bmSearch = "";
 
+    /// <summary>マネージャーを開く前にいたタブ。マネージャーで「戻る」を押したらそこへ帰る。</summary>
+    private BrowserTab? _bmReturnTab;
+
+    /// <summary>
+    /// 内部ページでの「戻る」。設定や About が開いていれば閉じる。
+    /// マネージャーのタブなら、開く前にいたタブへ移る（そのタブが残っていれば）。
+    /// </summary>
+    private void InternalBack()
+    {
+        if (_settingsOpen || _aboutOpen)
+        {
+            CloseInternalPages();
+            Render();
+            return;
+        }
+        if (_active.Page == BookmarkManager.PageId && _bmReturnTab is { } back && _tabs.Contains(back) && !ReferenceEquals(back, _active))
+        {
+            SelectTab(back);
+            return;
+        }
+        Render();   // 念のため、いまの状態の画面を出し直す
+    }
+
     /// <summary>マネージャーのタブを開く。もう開いていればそこへ移るだけ。</summary>
     private void OpenBookmarkManager()
     {
+        if (_active.Page != BookmarkManager.PageId) _bmReturnTab = _active;
         var tab = _tabs.FirstOrDefault(t => t.Page == BookmarkManager.PageId);
         if (tab is null)
         {
@@ -1979,6 +2016,15 @@ internal sealed class MainForm : Form
             ? BookmarkManager.Search(_bookmarks, _bmSearch)
             : BookmarkManager.Items(_bookmarks, _bmFolder));
     }
+
+    /// <summary>最後にマネージャーで消したもの。「元に戻す」は直前の 1 回分だけ。</summary>
+    private BookmarkStore.Removal? _bmUndo;
+    private string? _bmUndoToken;
+
+    private static IEnumerable<string> Ids(JsonElement msg) =>
+        msg.TryGetProperty("ids", out var ids) && ids.ValueKind == JsonValueKind.Array
+            ? ids.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!).ToList()
+            : [];
 
     /// <summary>マネージャーからの bm:* メッセージ。</summary>
     private void OnManagerMessage(string type, JsonElement msg)
@@ -2056,21 +2102,39 @@ internal sealed class MainForm : Form
 
             case "bm:delete":
             {
-                if (!msg.TryGetProperty("ids", out var ids) || ids.ValueKind != JsonValueKind.Array) return;
-                var n = 0;
-                foreach (var v in ids.EnumerateArray())
-                {
-                    var id = v.GetString();
-                    if (id is null or BookmarkStore.RootBar or BookmarkStore.RootOther) continue;
-                    if (_bookmarks.Get(id) is not { IsDeleted: false } node) continue;
-                    var parent = node.ParentId;
-                    _bookmarks.Remove(id);
-                    if (parent is not null) _bookmarks.Renumber(parent);
-                    n++;
-                }
-                if (n == 0) return;
+                var removal = _bookmarks.RemoveMany(Ids(msg));
+                if (removal.Tops.Count == 0) return;
                 _bookmarks.Save();
-                Log.Write($"bookmark manager: deleted {n}");
+                _bmUndo = removal;
+                _bmUndoToken = Guid.NewGuid().ToString("N");
+                Log.Write($"bookmark manager: deleted {removal.Tops.Count} ({removal.All.Count} with contents)");
+                BookmarksChanged();
+                PostToManager(new { type = "bm:deleted", token = _bmUndoToken, count = removal.Tops.Count });
+                return;
+            }
+
+            case "bm:undo":
+            {
+                if (_bmUndo is null || Str("token") != _bmUndoToken) return;
+                _bookmarks.RestoreRemoved(_bmUndo);
+                Log.Write($"bookmark manager: undo {_bmUndo.Tops.Count}");
+                _bmUndo = null;
+                _bmUndoToken = null;
+                _bookmarks.Save();
+                BookmarksChanged();
+                return;
+            }
+
+            case "bm:move":
+            {
+                var to = Str("to");
+                if (to is null || _bookmarks.Get(to) is not { IsFolder: true, IsDeleted: false }) return;
+                var moved = 0;
+                foreach (var id in Ids(msg))
+                    if (id is not (BookmarkStore.RootBar or BookmarkStore.RootOther) && _bookmarks.MoveToEnd(id, to)) moved++;
+                if (moved == 0) return;
+                _bookmarks.Save();
+                Log.Write($"bookmark manager: moved {moved} -> {FolderKind(to)}");
                 BookmarksChanged();
                 return;
             }

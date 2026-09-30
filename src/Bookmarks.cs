@@ -212,6 +212,81 @@ internal sealed class BookmarkStore
         return n;
     }
 
+    /// <summary>まとめて消した記録。RestoreRemoved で元の位置へ戻せる。</summary>
+    public sealed class Removal
+    {
+        /// <summary>選ばれて消したもの。親と、消す直前の並び位置（0 から）。</summary>
+        public List<(string Id, string Parent, int Position)> Tops { get; } = [];
+
+        /// <summary>印を付けたもの全部（フォルダの中身も含む）。</summary>
+        public List<string> All { get; } = [];
+    }
+
+    /// <summary>
+    /// まとめて消す。根（バー・未整理）と、既に消えているもの、ほかの選択の中に入っているものは飛ばす。
+    /// 並び位置を覚えておくので、RestoreRemoved で同じ場所に戻せる。
+    /// </summary>
+    public Removal RemoveMany(IEnumerable<string> ids)
+    {
+        var r = new Removal();
+        var chosen = ids.Where(id => id is not (RootBar or RootOther)).ToHashSet();
+
+        // 選んだフォルダの中身まで個別に選ばれていたら、中身の方は数えない（フォルダごと消える）。
+        bool InsideChosen(BookmarkNode n)
+        {
+            for (var p = n.ParentId is null ? null : Get(n.ParentId); p is not null; p = p.ParentId is null ? null : Get(p.ParentId))
+                if (chosen.Contains(p.Id)) return true;
+            return false;
+        }
+
+        var tops = chosen.Select(Get)
+            .Where(n => n is { IsDeleted: false, ParentId: not null } && !InsideChosen(n))
+            .Cast<BookmarkNode>()
+            .ToList();
+
+        foreach (var group in tops.GroupBy(n => n.ParentId!))
+        {
+            var order = Children(group.Key);
+            foreach (var n in group) r.Tops.Add((n.Id, group.Key, order.IndexOf(n)));
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var top in tops)
+        {
+            var stack = new Stack<string>();
+            stack.Push(top.Id);
+            while (stack.Count > 0)
+            {
+                var cur = stack.Pop();
+                if (Get(cur) is not { IsDeleted: false } n) continue;
+                n.DeletedAt = now;
+                n.UpdatedAt = now;
+                r.All.Add(cur);
+                foreach (var c in Nodes.Where(x => x.ParentId == cur && !x.IsDeleted)) stack.Push(c.Id);
+            }
+        }
+        foreach (var parent in r.Tops.Select(t => t.Parent).Distinct()) Renumber(parent);
+        return r;
+    }
+
+    /// <summary>RemoveMany を取り消す。消したものを元の親の、元の並び位置へ戻す。</summary>
+    public void RestoreRemoved(Removal r)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var id in r.All)
+            if (Get(id) is { } n) { n.DeletedAt = null; n.UpdatedAt = now; }
+
+        foreach (var group in r.Tops.GroupBy(t => t.Parent))
+        {
+            if (Get(group.Key) is not { IsDeleted: false }) continue;   // 親ごと消えていたら、位置は諦める
+            var restored = group.Select(t => t.Id).ToHashSet();
+            var order = Children(group.Key).Where(n => !restored.Contains(n.Id)).ToList();
+            foreach (var t in group.OrderBy(t => t.Position))
+                if (Get(t.Id) is { } n) order.Insert(Math.Clamp(t.Position, 0, order.Count), n);
+            for (var i = 0; i < order.Count; i++) order[i].Index = i;
+        }
+    }
+
     /// <summary>消す。子も一緒に印を付ける。</summary>
     public void Remove(string id)
     {
