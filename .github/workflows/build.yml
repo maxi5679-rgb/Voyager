@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Builds both MSIs on a GitHub-hosted Windows runner.
+#
+#   push to main / pull request  -> version 0.0.<run number>, kept as an artifact for 14 days.
+#                                   Lower than any release, so it cannot replace an installed release.
+#   tag vX.Y.Z                   -> version X.Y.Z, and a DRAFT release with both MSIs and their
+#                                   SHA-256. Nothing is published until the draft is published by hand.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 6.0.2
+
+      - name: Choose the version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $v = $env:GITHUB_REF_NAME.Substring(1)
+            if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Tag $env:GITHUB_REF_NAME must look like v1.2.3" }
+          } else {
+            $v = "0.0.$env:GITHUB_RUN_NUMBER"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "Version: $v" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Build the MSIs
+        shell: pwsh
+        run: ./ci/build.ps1 -Version ${{ steps.ver.outputs.version }} -OutDir out
+
+      - name: Write SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          Get-ChildItem out -Filter *.msi | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii out/SHA256SUMS.txt
+          Get-Content out/SHA256SUMS.txt >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voyager-${{ steps.ver.outputs.version }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: voyager-${{ needs.build.outputs.version }}
+          path: out
+
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" --draft \
+            --title "Voyager ${{ needs.build.outputs.version }}" \
+            --notes "Built by GitHub Actions from ${GITHUB_SHA::7}. Not signed yet. SHA-256 sums are in SHA256SUMS.txt."

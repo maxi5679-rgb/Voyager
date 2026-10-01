@@ -53,3 +53,7 @@ Desktop.ini
 
 # Retired scripts and stray images (kept locally, not part of the build)
 /old/
+
+# CI build output (ci/build.ps1)
+/ci-work/
+/out/
