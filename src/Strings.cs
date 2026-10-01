@@ -304,6 +304,21 @@ internal static class Strings
           + "offering anything, you get nothing at all.<br>With it off, Voyager's menu appears everywhere.<br>"
           + "Either way, <strong>Shift + right-click</strong> always gives you Voyager's menu.");
 
+    public static string HistoryHeading => T("閲覧履歴", "Browsing history");
+    public static string ClearHistory => T("閲覧履歴を消す", "Clear browsing history");
+    public static string HistoryNote(int days) =>
+        T($"開いたページの記録は WebView2 が持っています。{days} 日より古いものは起動のたびに消えます。"
+          + "ボタンを押すと全部消えます。どちらでもログイン状態と Cookie は残ります。",
+          $"WebView2 keeps its own record of the pages you open. Entries older than {days} days are removed "
+          + "every time Voyager starts; the button removes all of them. Logins and cookies are kept either way.");
+    public static string ClearHistoryConfirm =>
+        T("閲覧履歴をすべて消します。ログイン状態と Cookie は残ります。\n\nよろしいですか？",
+          "This clears all browsing history. Logins and cookies are kept.\n\nContinue?");
+    public static string HistoryCleared(DateTime at) =>
+        T($"{at:HH:mm} に消しました。", $"Cleared at {at:HH:mm}.");
+    public static string HistoryClearFailed(string detail) =>
+        T($"消せませんでした: {detail}", $"Could not clear it: {detail}");
+
     public static string DataHeading => T("データ", "Data");
     public static string DataNote => T("ログイン状態と Cookie は次の場所に保存されます。",
                                        "Logins and cookies are kept here.");

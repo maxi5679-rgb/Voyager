@@ -218,7 +218,8 @@ internal static class Pages
     }
 
     /// <summary>設定画面。</summary>
-    public static string Settings(AppSettings s, Engine? current)
+    /// <param name="historyNote">閲覧履歴を消したあとの一言（「19:45 に消しました。」など）。無ければ出さない。</param>
+    public static string Settings(AppSettings s, Engine? current, int historyKeepDays, string? historyNote = null)
     {
         (string id, string label, string hint)[] homes =
         [
@@ -313,6 +314,19 @@ internal static class Pages
                 {{E(Strings.PreferPageMenu)}}
               </label>
               <p class="meta">{{Strings.ContextMenuNote}}</p>
+              <h2>{{E(Strings.HistoryHeading)}}</h2>
+              <div class="grid">
+                <div class="choice">
+                  <div style="flex:1">
+                    <strong>{{E(Strings.ClearHistory)}}</strong>
+                    {{(historyNote is null ? "" : $"<br><small>{E(historyNote)}</small>")}}
+                  </div>
+                  <button class="field" style="width:auto;padding:8px 14px;cursor:pointer"
+                          data-msg='{"type":"clearHistory"}'>{{E(Strings.ClearHistory)}}</button>
+                </div>
+              </div>
+              <p class="meta">{{E(Strings.HistoryNote(historyKeepDays))}}</p>
+
               <h2>{{E(Strings.DataHeading)}}</h2>
               <p class="meta">{{E(Strings.DataNote)}}<br>{{E(AppSettings.UserDataDir)}}</p>
               <div class="grid" style="margin-top:8px">

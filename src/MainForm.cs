@@ -342,6 +342,7 @@ internal sealed class MainForm : Form
 
             await _uiView.EnsureCoreWebView2Async(_env);
             var core = _uiView.CoreWebView2;
+            PruneHistory(core.Profile);
             Log.Write($"uiView ready. stage={_content.Width}x{_content.Height} view={_uiView.Width}x{_uiView.Height} visible={_uiView.Visible}");
 
             core.ProcessFailed += (_, a) => Log.Write($"!! ProcessFailed: {a.ProcessFailedKind} {a.Reason}");
@@ -588,7 +589,7 @@ internal sealed class MainForm : Form
                       $"view={_uiView.Width}x{_uiView.Height} visible={_uiView.Visible} parent={_uiView.Parent?.Name ?? "?"}");
             _uiView.CoreWebView2.NavigateToString(
                 LogHtml(_aboutOpen ? Pages.About(_env?.BrowserVersionString)
-                        : _settingsOpen ? Pages.Settings(_settings, _engine)
+                        : _settingsOpen ? Pages.Settings(_settings, _engine, HistoryKeepDays, _historyNote)
                         : _active.Page == BookmarkManager.PageId ? Pages.Bookmarks()
                         : _engine is null ? Pages.Picker()
                         : Pages.Start(_engine)));
@@ -1194,6 +1195,7 @@ internal sealed class MainForm : Form
         var open = !_settingsOpen;
         CloseInternalPages();
         _settingsOpen = open;
+        if (open) _historyNote = null;   // 前に開いたときの「消しました」は持ち越さない
         Render();
     }
 
@@ -1310,6 +1312,10 @@ internal sealed class MainForm : Form
                 ApplyContextMenuSetting();
                 return;
 
+            case "clearHistory":
+                ClearHistory();
+                return;
+
             case "pickDownloadDir":
                 PickDownloadDir();
                 return;
@@ -1346,6 +1352,54 @@ internal sealed class MainForm : Form
                 Render();
                 return;
         }
+    }
+
+    // ---------------------------------------------------------------- 閲覧履歴
+
+    /// <summary>WebView2 の閲覧履歴を残す日数。これより古い分は起動のたびに消す。</summary>
+    private const int HistoryKeepDays = 7;
+
+    /// <summary>設定画面に出す「消しました」の一言。設定を開き直すと消える。</summary>
+    private string? _historyNote;
+
+    /// <summary>
+    /// WebView2（中の Chromium）は、開いたページを自分で記録している
+    /// （データフォルダの EBWebView\Default\History）。Voyager の画面からは見えず、
+    /// CCleaner などの掃除ソフトも Voyager のことは知らないので、放っておくと溜まり続ける。
+    /// 起動のたびに古い分を消す。起動は待たせず、結果はログにだけ残す。
+    /// </summary>
+    private static async void PruneHistory(CoreWebView2Profile profile)
+    {
+        try
+        {
+            var now = DateTime.Now;
+            await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.BrowsingHistory,
+                now.AddYears(-30), now.AddDays(-HistoryKeepDays));
+            Log.Write($"history: removed entries older than {HistoryKeepDays} days");
+        }
+        catch (Exception ex) { Log.Write($"history: prune failed: {ex.GetType().Name} {ex.Message}"); }
+    }
+
+    /// <summary>設定の［閲覧履歴を消す］。ログイン状態と Cookie は消さない。</summary>
+    private async void ClearHistory()
+    {
+        if (_uiView.CoreWebView2 is not { } core) return;
+        var answer = MessageBox.Show(this, Strings.ClearHistoryConfirm, App.Name,
+            MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+        if (answer != DialogResult.OK) return;
+
+        try
+        {
+            await core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.BrowsingHistory);
+            _historyNote = Strings.HistoryCleared(DateTime.Now);
+            Log.Write("history: cleared all");
+        }
+        catch (Exception ex)
+        {
+            _historyNote = Strings.HistoryClearFailed(ex.Message);
+            Log.Write($"history: clear failed: {ex.GetType().Name} {ex.Message}");
+        }
+        if (_settingsOpen) Render();
     }
 
     // ---------------------------------------------------------------- ダウンロード
