@@ -217,3 +217,14 @@ About ページの画像は、星間空間に入るボイジャー1号の想像�
 このブラウザの名前としての「Voyager」と、Voyager のアイコンは、公式版の目印です。公式版とは、
 このリポジトリから GitHub Actions で作り、Releases ページで配っているものです。改造版を配るときは、
 別の名前とアイコンにしてください。「Voyager をもとにした」と書くのはかまいません。
+
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
+- 開発者: maxi5679-rgb
+- レビュアー: maxi5679-rgb
+- コード署名の承認者: maxi5679-rgb
+
+利用者が頼まない限り、Voyager は他のコンピューターに情報を送りません。
+[プライバシー](README.ja.md#プライバシー)の節も参照してください。

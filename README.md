@@ -227,3 +227,14 @@ The name "Voyager" for this browser and the Voyager icon mark the official build
 from this repository by its GitHub Actions workflow and published on its Releases page. If
 you distribute a modified version, please give it a different name and icon. Saying that it
 is based on Voyager is fine.
+
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
+- Developer: maxi5679-rgb
+- Reviewer: maxi5679-rgb
+- Code signing approver: maxi5679-rgb
+
+Voyager does not send information to other computers unless requested by the user. See the
+[Privacy](README.md#privacy) section.
