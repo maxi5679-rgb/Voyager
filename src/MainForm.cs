@@ -546,6 +546,7 @@ internal sealed class MainForm : Form
         _settings.Save();
         _faviconSave.Stop();   // 直後に自分で書くので、二重に書かせない
         _bookmarks.Save();
+        _linkCheck?.Stop();
         base.OnFormClosing(e);
     }
 
@@ -2011,8 +2012,9 @@ internal sealed class MainForm : Form
     {
         if (!ManagerShowing) return;
         if (_bookmarks.Get(_bmFolder) is not { IsFolder: true, IsDeleted: false }) _bmFolder = BookmarkStore.RootBar;
-        PostToManager(BookmarkManager.Tree(_bookmarks, _bmFolder));
-        PostToManager(_bmView == "dups" ? BookmarkManager.Duplicates(_bookmarks)
+        PostToManager(BookmarkManager.Tree(_bookmarks, _bmFolder, _linkCheck));
+        PostToManager(_bmView == "dead" ? BookmarkManager.DeadLinks(_bookmarks, _linkCheck, _bmFolder)
+            : _bmView == "dups" ? BookmarkManager.Duplicates(_bookmarks)
             : _bmSearch.Length > 0 ? BookmarkManager.Search(_bookmarks, _bmSearch)
             : BookmarkManager.Items(_bookmarks, _bmFolder));
     }
@@ -2020,8 +2022,45 @@ internal sealed class MainForm : Form
     /// <summary>最後にマネージャーで消したもの。「元に戻す」は直前の 1 回分だけ。</summary>
     private BookmarkStore.Removal? _bmUndo;
 
-    /// <summary>フォルダでも検索でもない見方（"dups" ＝ 重複）。空ならふつう。</summary>
+    /// <summary>フォルダでも検索でもない見方（"dups" ＝ 重複、"dead" ＝ リンク切れ）。空ならふつう。</summary>
     private string _bmView = "";
+
+    /// <summary>リンク切れの確認。最後の 1 回分の結果を、閉じるまで持っておく。</summary>
+    private LinkChecker? _linkCheck;
+    private DateTime _linkCheckPosted;
+
+    private void StartLinkCheck()
+    {
+        if (_linkCheck is { Running: true }) return;
+        var links = BookmarkManager.LinksUnder(_bookmarks, _bmFolder);
+        var ua = _uiView.CoreWebView2?.Settings.UserAgent ?? "Mozilla/5.0";
+        var check = new LinkChecker(_bmFolder, links, ua);
+        check.Checked += (_, r) => BeginInvoke(() => OnLinkChecked(check, r));
+        check.Finished += () => BeginInvoke(() => OnLinkCheckFinished(check));
+        _linkCheck = check;
+        Log.Write($"link check: start {check.Total} links in {FolderKind(_bmFolder)}");
+        check.Start();
+        RefreshManager();
+    }
+
+    private void OnLinkChecked(LinkChecker check, LinkChecker.Result r)
+    {
+        if (!ReferenceEquals(check, _linkCheck) || IsDisposed) return;
+        if (r.Kind != LinkChecker.Kind.Ok) { RefreshManager(); return; }   // 一覧と木の数を出し直す
+        // 問題が無かったものは、進み具合だけを半秒に 1 回まで。
+        if (DateTime.UtcNow - _linkCheckPosted < TimeSpan.FromMilliseconds(500)) return;
+        _linkCheckPosted = DateTime.UtcNow;
+        PostToManager(new { type = "bm:check", check = BookmarkManager.CheckState(_bookmarks, check, _bmFolder) });
+    }
+
+    private void OnLinkCheckFinished(LinkChecker check)
+    {
+        if (!ReferenceEquals(check, _linkCheck) || IsDisposed) return;
+        Log.Write($"link check: {(check.NetworkLost ? "network lost" : check.Stopped ? "stopped" : "done")} " +
+                  $"{check.Done}/{check.Total}, broken {check.Count(LinkChecker.Kind.Dead)}, " +
+                  $"unsure {check.Count(LinkChecker.Kind.Unsure)}, {check.Elapsed.TotalMinutes:0.0} min");
+        RefreshManager();
+    }
     private string? _bmUndoToken;
 
     private static IEnumerable<string> Ids(JsonElement msg) =>
@@ -2060,7 +2099,7 @@ internal sealed class MainForm : Form
 
             case "bm:view":
                 // 重複の一覧など、フォルダではない見方。
-                _bmView = Str("view") is "dups" ? "dups" : "";
+                _bmView = Str("view") is "dups" or "dead" ? Str("view")! : "";
                 _bmSearch = "";
                 if (_bmView == "dups")
                     Log.Write($"bookmark manager: duplicates ({BookmarkManager.DuplicateGroups(_bookmarks).Count} groups)");
@@ -2153,6 +2192,18 @@ internal sealed class MainForm : Form
                 BookmarksChanged();
                 return;
             }
+
+            case "bm:checkStart":
+                StartLinkCheck();
+                return;
+
+            case "bm:checkStop":
+                if (_linkCheck is { Running: true } c)
+                {
+                    Log.Write("link check: stop requested");
+                    c.Stop();
+                }
+                return;
 
             case "bm:drop":
             {

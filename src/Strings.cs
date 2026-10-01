@@ -114,6 +114,31 @@ internal static class Strings
                                        "Bookmarks with the same address. The first of each group (the one on the bar, or else the oldest) is the one to keep.");
     public static string BmSelectExtras => T("先頭以外をすべて選ぶ", "Select all but the first of each");
     public static string BmShowInFolder => T("フォルダを表示", "Show in folder");
+    public static string BmDeadLinks => T("リンク切れ", "Broken links");
+    public static string BmCheckStart => T("確認を始める", "Start checking");
+    public static string BmCheckStop => T("止める", "Stop");
+    public static string BmCheckAgain => T("もう一度確認する", "Check again");
+    public static string BmCheckIdle => T("「{0}」とその下のブックマークを、1 件ずつゆっくり確認します。ほかのフォルダを確認するときは、そのフォルダを開いてからここへ戻ってください。",
+                                         "Checks the bookmarks in “{0}” and below, slowly, one at a time. To check another folder, open it first and come back here.");
+    public static string BmCheckRunning => T("「{0}」を確認中", "Checking “{0}”");
+    public static string BmCheckDone => T("「{0}」の確認が終わりました", "Finished checking “{0}”");
+    public static string BmCheckStopped => T("「{0}」の確認を止めました", "Stopped checking “{0}”");
+    public static string BmCheckNetwork => T("ネットにつながらなくなったようなので止めました（「{0}」）", "Stopped because the connection seems to be down (“{0}”)");
+    public static string BmCheckProgress => T("{0} / {1} 件", "{0} of {1}");
+    public static string BmCheckSummary => T("切れている {0}・確認できなかった {1}", "Broken {0} · Couldn't confirm {1}");
+    public static string BmCheckNone => T("問題のあるリンクは見つかりませんでした。", "No problems found.");
+    public static string BmGroupDead => T("切れている", "Broken");
+    public static string BmGroupUnsure => T("確認できなかった（ボット対策などで断られただけのこともあります）", "Couldn't confirm (the site may just be blocking automated checks)");
+    public static string BmSelectDead => T("切れているものをすべて選ぶ", "Select all broken");
+    public static string BmWhyNotFound => T("ページが無い", "Page not found");
+    public static string BmWhyNoHost => T("ドメインが無い", "No such domain");
+    public static string BmWhyRefused => T("つながらない", "Connection failed");
+    public static string BmWhyDenied => T("断られた", "Access denied");
+    public static string BmWhyTooMany => T("アクセスが多すぎる", "Too many requests");
+    public static string BmWhyServer => T("サーバーエラー", "Server error");
+    public static string BmWhyTimeout => T("時間切れ", "Timed out");
+    public static string BmWhyTls => T("安全な接続ができない", "Secure connection failed");
+    public static string BmWhyOther => T("エラー", "Error");
     public static string BmDeleted => T("{0} 件を削除しました", "Deleted {0}");
     public static string BmUndo => T("元に戻す", "Undo");
     public static string BmConfirmMany => T("{0} 件を削除します。選んだフォルダの中身も一緒に消えます。",

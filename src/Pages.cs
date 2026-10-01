@@ -353,6 +353,21 @@ internal static class Pages
             dupNote = Strings.BmDupNote,
             selectExtras = Strings.BmSelectExtras,
             showInFolder = Strings.BmShowInFolder,
+            dead = Strings.BmDeadLinks,
+            checkStart = Strings.BmCheckStart,
+            checkStop = Strings.BmCheckStop,
+            checkAgain = Strings.BmCheckAgain,
+            checkIdle = Strings.BmCheckIdle,
+            checkRunning = Strings.BmCheckRunning,
+            checkDone = Strings.BmCheckDone,
+            checkStopped = Strings.BmCheckStopped,
+            checkNetwork = Strings.BmCheckNetwork,
+            checkProgress = Strings.BmCheckProgress,
+            checkSummary = Strings.BmCheckSummary,
+            checkNone = Strings.BmCheckNone,
+            groupDead = Strings.BmGroupDead,
+            groupUnsure = Strings.BmGroupUnsure,
+            selectDead = Strings.BmSelectDead,
             deleted = Strings.BmDeleted,
             undo = Strings.BmUndo,
         });
@@ -420,6 +435,8 @@ internal static class Pages
               .grp b { color:#9ec25f; font-weight:normal; margin-left:8px; }
               .vbar { display:flex; align-items:center; gap:12px; padding:10px 10px 6px; color:#9aa190; font-size:12px; }
               .vbar span { flex:1; }
+              .vbar .btn { flex:none; }
+              .row .why { color:#d9a066; margin-right:8px; }
             </style>
             <div class="bm">
               <div class="bm-top">
@@ -438,7 +455,8 @@ internal static class Pages
             <script>
               const L = {{labels}};
               let folders = [], current = null, searching = null, items = [], icons = [];
-              let view = null, dupCount = 0;   // view: フォルダでも検索でもない見方（'dups' ＝ 重複）
+              let view = null, dupCount = 0;   // view: フォルダでも検索でもない見方（'dups' ＝ 重複、'dead' ＝ リンク切れ）
+              let deadCount = null, check = null;   // リンク切れ: 木に出す数（未確認なら null）と、確認の進み具合
               let picked = new Set(), anchor = -1;   // 選んでいる id と、Shift で範囲を取るときの起点
               const open = new Set(['bar', 'other']);
 
@@ -488,6 +506,33 @@ internal static class Pages
                 dup.append(el('span', 't-tog', '⧉'), el('span', 't-name', L.dups), el('span', 't-count', '(' + dupCount.toLocaleString() + ')'));
                 dup.addEventListener('click', () => openView('dups'));
                 tree.append(dup);
+                const dead = el('div', 't-row' + (view === 'dead' ? ' on' : ''));
+                dead.append(el('span', 't-tog', '⚠'), el('span', 't-name', L.dead));
+                if (deadCount != null) dead.append(el('span', 't-count', '(' + deadCount.toLocaleString() + ')'));
+                dead.addEventListener('click', () => openView('dead'));
+                tree.append(dead);
+              }
+
+              // リンク切れの上の帯。進み具合と、始める・止めるボタン。
+              const fmt2 = (s, a, b) => s.replace('{0}', Number(a).toLocaleString()).replace('{1}', Number(b).toLocaleString());
+              function checkBar() {
+                const bar = el('div', 'vbar'); bar.id = 'checkbar';
+                const c = check || { state: 'idle', scope: '' };
+                const btn = (label, fn) => { const b = el('button', 'btn', label); b.addEventListener('click', fn); bar.append(b); };
+                let text;
+                if (c.state === 'idle') text = L.checkIdle.replace('{0}', c.scope);
+                else {
+                  const head = { running: L.checkRunning, done: L.checkDone, stopped: L.checkStopped, network: L.checkNetwork }[c.state] || '';
+                  text = head.replace('{0}', c.scope) + '　' + fmt2(L.checkProgress, c.done, c.total) + '　' + fmt2(L.checkSummary, c.dead, c.unsure);
+                }
+                bar.append(el('span', null, text));
+                if (c.state === 'running') { btn(L.checkStop, () => send({ type: 'bm:checkStop' })); return bar; }
+                if (items.some(i => i.group === 0))
+                  btn(L.selectDead, () => { picked = new Set(items.filter(i => i.group === 0).map(i => i.id)); anchor = -1; mark(); });
+                const label = c.state === 'idle' ? L.checkStart
+                  : (c.next && c.next !== c.scope ? L.checkStart + '：' + c.next : L.checkAgain);
+                btn(label, () => send({ type: 'bm:checkStart' }));
+                return bar;
               }
 
               function openView(v) {
@@ -507,6 +552,13 @@ internal static class Pages
               function drawList() {
                 list.replaceChildren();
                 const flat = searching || view;
+                if (view === 'dead') {
+                  list.append(checkBar());
+                  if (!items.length) {
+                    if (check && (check.state === 'done' || check.state === 'stopped')) list.append(el('div', 'note', L.checkNone));
+                    showCount(); return;
+                  }
+                }
                 if (!items.length) { list.append(el('div', 'note', view === 'dups' ? L.noDups : searching ? L.noHits : L.empty)); showCount(); return; }
                 if (searching) list.append(el('div', 'note', fmt(L.hits, items.length)));
                 if (view === 'dups') {
@@ -520,9 +572,9 @@ internal static class Pages
                   list.append(bar);
                 }
                 items.forEach((it, i) => {
-                  if (view === 'dups' && (i === 0 || items[i - 1].group !== it.group)) {
+                  if ((view === 'dups' || view === 'dead') && (i === 0 || items[i - 1].group !== it.group)) {
                     let n = 0; for (let k = i; k < items.length && items[k].group === it.group; k++) n++;
-                    const head = el('div', 'grp', it.url || '');
+                    const head = el('div', 'grp', view === 'dead' ? (it.group === 0 ? L.groupDead : L.groupUnsure) : (it.url || ''));
                     head.append(el('b', null, fmt(L.dragN, n)));
                     list.append(head);
                   }
@@ -533,7 +585,9 @@ internal static class Pages
                   else if (it.icon >= 0) { ic = el('img'); ic.src = icons[it.icon]; ic.alt = ''; }
                   else ic = el('span');
                   row.append(ic, el('div', 'ttl', it.kind === 'folder' ? it.title + '  (' + it.count + ')' : it.title));
-                  row.append(el('div', 'url', it.kind === 'folder' ? '' : (it.url || '')));
+                  const urlCell = el('div', 'url', it.kind === 'folder' ? '' : (it.url || ''));
+                  if (it.why) urlCell.prepend(el('span', 'why', it.why));
+                  row.append(urlCell);
                   if (flat) row.append(el('div', 'path', it.path || ''));
                   if (it.url) row.title = it.title + '\n' + it.url;
                   row.addEventListener('mousedown', (e) => {
@@ -870,7 +924,7 @@ internal static class Pages
               window.chrome?.webview?.addEventListener('message', (e) => {
                 const m = e.data;
                 if (m.type === 'bm:tree') {
-                  folders = m.folders; dupCount = m.dups || 0;
+                  folders = m.folders; dupCount = m.dups || 0; deadCount = m.dead ?? null;
                   if (!current) { current = m.selected; for (const p of parentsOf(current)) open.add(p); }
                   if (!folders.some(f => f.id === current)) current = 'bar';
                   drawTree();
@@ -878,10 +932,15 @@ internal static class Pages
                   if ((m.view || null) !== view || (m.search || null) !== searching ||
                       (!m.search && !m.view && m.folder !== current)) return; // 古い返事
                   items = m.items; icons = m.icons;
+                  if (m.check) check = m.check;
                   const alive = new Set(items.map(i => i.id));
                   picked = new Set([...picked].filter(id => alive.has(id)));
                   anchor = -1;
                   drawList();
+                } else if (m.type === 'bm:check') {
+                  check = m.check;
+                  const old = document.getElementById('checkbar');
+                  if (old && view === 'dead') old.replaceWith(checkBar());
                 } else if (m.type === 'bm:deleted') {
                   showUndo(m.token, m.count);
                 } else if (m.type === 'bm:error') {

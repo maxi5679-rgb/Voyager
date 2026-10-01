@@ -12,7 +12,7 @@ internal static class BookmarkManager
     public const string PageId = "bookmarks";
 
     /// <summary>フォルダの木。親より先に子が来ないよう、深さ優先で並べる。</summary>
-    public static object Tree(BookmarkStore store, string selected)
+    public static object Tree(BookmarkStore store, string selected, LinkChecker? check = null)
     {
         var kids = ChildrenMap(store);
         var counts = new Dictionary<string, int>();
@@ -36,7 +36,8 @@ internal static class BookmarkManager
         foreach (var root in new[] { BookmarkStore.RootBar, BookmarkStore.RootOther })
             if (store.Get(root) is { } r) Walk(r, 0);
 
-        return new { type = "bm:tree", folders, selected, dups = DuplicateGroups(store).Count };
+        return new { type = "bm:tree", folders, selected, dups = DuplicateGroups(store).Count,
+                     dead = check is null ? (int?)null : Problems(store, check).Count(p => p.Result.Kind == LinkChecker.Kind.Dead) };
     }
 
     /// <summary>1 フォルダ分の中身。</summary>
@@ -78,6 +79,90 @@ internal static class BookmarkManager
         return new { type = "bm:items", folder = (string?)null, search = (string?)null, view = "dups", items, icons };
     }
 
+    /// <summary>リンク切れの確認結果。「切れている」を先、「確認できなかった」を後に。</summary>
+    public static object DeadLinks(BookmarkStore store, LinkChecker? check, string scopeId)
+    {
+        var icons = new List<string>();
+        var iconIndex = new Dictionary<string, int>();
+        var kids = ChildrenMap(store);
+        var items = new List<object>();
+        if (check is not null)
+            foreach (var (n, r) in Problems(store, check))
+                items.Add(new
+                {
+                    id = n.Id, kind = n.Kind, title = Label(n), url = n.Url,
+                    icon = IconOf(n, icons, iconIndex), count = 0, path = PathLabel(store, n), parent = n.ParentId,
+                    group = r.Kind == LinkChecker.Kind.Dead ? 0 : 1, why = Why(r),
+                });
+        return new { type = "bm:items", folder = (string?)null, search = (string?)null, view = "dead", items, icons,
+                     check = CheckState(store, check, scopeId) };
+    }
+
+    /// <summary>確認の進み具合。ページの上の帯に出す。</summary>
+    public static object CheckState(BookmarkStore store, LinkChecker? check, string scopeId)
+    {
+        var scope = check?.ScopeId ?? scopeId;
+        var title = store.Get(scope) is { } f ? Label(f) : "";
+        if (check is null) return new { state = "idle", scope = title, done = 0, total = 0, dead = 0, unsure = 0 };
+        var state = check.Running ? "running" : check.NetworkLost ? "network" : check.Stopped ? "stopped" : "done";
+        var problems = Problems(store, check);
+        return new
+        {
+            state, scope = title, done = check.Done, total = check.Total,
+            dead = problems.Count(p => p.Result.Kind == LinkChecker.Kind.Dead),
+            unsure = problems.Count(p => p.Result.Kind == LinkChecker.Kind.Unsure),
+            next = store.Get(scopeId) is { } nf ? Label(nf) : "",
+        };
+    }
+
+    /// <summary>問題があったもの（消したものは除く）。並びは 切れている → 確認できなかった、それぞれ名前順。</summary>
+    private static List<(BookmarkNode Node, LinkChecker.Result Result)> Problems(BookmarkStore store, LinkChecker check) =>
+        check.Results
+            .Where(kv => kv.Value.Kind != LinkChecker.Kind.Ok)
+            .Select(kv => (Node: store.Get(kv.Key), Result: kv.Value))
+            .Where(p => p.Node is { IsDeleted: false, IsLink: true })
+            .Select(p => (p.Node!, p.Result))
+            .OrderBy(p => p.Result.Kind == LinkChecker.Kind.Dead ? 0 : 1)
+            .ThenBy(p => p.Item1.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+    private static string Why(LinkChecker.Result r)
+    {
+        var text = r.Reason switch
+        {
+            LinkChecker.Reason.NotFound => Strings.BmWhyNotFound,
+            LinkChecker.Reason.NoHost => Strings.BmWhyNoHost,
+            LinkChecker.Reason.Refused => Strings.BmWhyRefused,
+            LinkChecker.Reason.Denied => Strings.BmWhyDenied,
+            LinkChecker.Reason.TooMany => Strings.BmWhyTooMany,
+            LinkChecker.Reason.Server => Strings.BmWhyServer,
+            LinkChecker.Reason.Timeout => Strings.BmWhyTimeout,
+            LinkChecker.Reason.Tls => Strings.BmWhyTls,
+            _ => Strings.BmWhyOther,
+        };
+        return r.Status > 0 ? $"{text} ({r.Status})" : text;
+    }
+
+    /// <summary>再帰でフォルダの中のリンクを集める（確認する範囲）。</summary>
+    public static List<(string Id, string Url)> LinksUnder(BookmarkStore store, string folderId)
+    {
+        var kids = ChildrenMap(store);
+        var links = new List<(string, string)>();
+        var stack = new Stack<string>();
+        stack.Push(folderId);
+        for (var guard = 0; stack.Count > 0 && guard < 100_000; guard++)
+        {
+            if (!kids.TryGetValue(stack.Pop(), out var list)) continue;
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                var k = list[i];
+                if (k.IsFolder) stack.Push(k.Id);
+                else if (!string.IsNullOrWhiteSpace(k.Url)) links.Add((k.Id, k.Url!));
+            }
+        }
+        return links;
+    }
+
     /// <summary>重複のグループ。2 件以上あるアドレスだけ。</summary>
     public static List<List<BookmarkNode>> DuplicateGroups(BookmarkStore store) =>
         store.Nodes
@@ -115,18 +200,20 @@ internal static class BookmarkManager
     private static object Item(BookmarkNode n, Dictionary<string, List<BookmarkNode>> kids,
                                List<string> icons, Dictionary<string, int> iconIndex, string? path, int group = -1)
     {
-        var icon = -1;
-        if (n.IsLink && !string.IsNullOrEmpty(n.Icon))
-        {
-            if (!iconIndex.TryGetValue(n.Icon, out icon))
-            {
-                icon = icons.Count;
-                icons.Add(n.Icon);
-                iconIndex[n.Icon] = icon;
-            }
-        }
+        var icon = IconOf(n, icons, iconIndex);
         var count = n.IsFolder && kids.TryGetValue(n.Id, out var list) ? list.Count : 0;
         return new { id = n.Id, kind = n.Kind, title = Label(n), url = n.Url, icon, count, path, parent = n.ParentId, group };
+    }
+
+    /// <summary>ファビコンの番号。同じ絵は 1 回だけ送る。無ければ -1。</summary>
+    private static int IconOf(BookmarkNode n, List<string> icons, Dictionary<string, int> iconIndex)
+    {
+        if (!n.IsLink || string.IsNullOrEmpty(n.Icon)) return -1;
+        if (iconIndex.TryGetValue(n.Icon, out var icon)) return icon;
+        icon = icons.Count;
+        icons.Add(n.Icon);
+        iconIndex[n.Icon] = icon;
+        return icon;
     }
 
     private static string Label(BookmarkNode n) =>
