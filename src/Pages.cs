@@ -347,6 +347,7 @@ internal static class Pages
             deleteN = Strings.BmDeleteN,
             move = Strings.BmMove,
             selected = Strings.BmSelected,
+            dragN = Strings.BmDragN,
             deleted = Strings.BmDeleted,
             undo = Strings.BmUndo,
         });
@@ -399,6 +400,15 @@ internal static class Pages
                        display:flex; align-items:center; gap:14px; padding:10px 16px; border-radius:12px;
                        background:#171912; border:1px solid #2d3228; box-shadow:0 12px 32px rgba(0,0,0,.55); }
               #toast[hidden] { display:none; }
+              /* ドラッグ */
+              .row.drop-before { box-shadow:inset 0 2px 0 #9ec25f; }
+              .row.drop-after { box-shadow:inset 0 -2px 0 #9ec25f; }
+              .row.drop-into, .t-row.drop-into { background:#33421f; box-shadow:inset 0 0 0 1px #7d9a4c; }
+              #list.drop-end { box-shadow:inset 0 0 0 1px #7d9a4c; }
+              #ghost { position:fixed; z-index:9500; pointer-events:none; max-width:320px; overflow:hidden; text-overflow:ellipsis;
+                       white-space:nowrap; padding:4px 10px; border-radius:8px; background:#26301b; border:1px solid #7d9a4c; font-size:12px; }
+              body.dragging, body.dragging * { cursor:grabbing !important; }
+              body.dragging.no-drop, body.dragging.no-drop * { cursor:no-drop !important; }
             </style>
             <div class="bm">
               <div class="bm-top">
@@ -448,11 +458,15 @@ internal static class Pages
                   if (f.depth > hideBelow) continue;
                   hideBelow = Infinity;
                   const row = el('div', 't-row' + (f.id === current && !searching ? ' on' : ''));
+                  row.dataset.id = f.id;
                   row.style.paddingLeft = (8 + f.depth * 14) + 'px';
                   const tog = el('span', 't-tog', f.hasSub ? (open.has(f.id) ? '▾' : '▸') : '');
                   tog.addEventListener('click', (e) => { e.stopPropagation(); if (!f.hasSub) return; open.has(f.id) ? open.delete(f.id) : open.add(f.id); drawTree(); });
                   row.append(tog, el('span', 't-name', f.title), el('span', 't-count', '(' + f.count.toLocaleString() + ')'));
                   row.addEventListener('click', () => selectFolder(f.id));
+                  if (!isRoot(f.id)) row.addEventListener('mousedown', (e) => {
+                    if (e.button === 0 && e.target !== tog) pressRow(e, [{ id: f.id, kind: 'folder', title: f.title, count: f.count }], null);
+                  });
                   row.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); folderMenu(e.clientX, e.clientY, f); });
                   tree.append(row);
                   if (f.hasSub && !open.has(f.id)) hideBelow = f.depth;
@@ -482,7 +496,14 @@ internal static class Pages
                   row.append(el('div', 'url', it.kind === 'folder' ? '' : (it.url || '')));
                   if (searching) row.append(el('div', 'path', it.path || ''));
                   if (it.url) row.title = it.title + '\n' + it.url;
-                  row.addEventListener('mousedown', (e) => { if (e.button === 0) choose(i, e.ctrlKey, e.shiftKey); });
+                  row.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    if (e.ctrlKey || e.shiftKey) { choose(i, e.ctrlKey, e.shiftKey); if (picked.has(it.id)) pressRow(e, pickedItems(), null); return; }
+                    // 選んでいる束の上なら束ごとつかむ。動かさずに離したら、その 1 件だけの選択にする。
+                    if (picked.has(it.id)) { pressRow(e, pickedItems(), i); return; }
+                    choose(i, false, false);
+                    pressRow(e, [it], null);
+                  });
                   row.addEventListener('dblclick', () => activate(it, true));
                   row.addEventListener('contextmenu', (e) => {
                     e.preventDefault(); e.stopPropagation();
@@ -655,6 +676,130 @@ internal static class Pages
                 toastTimer = setTimeout(() => { toast.hidden = true; }, 10000);
               }
 
+              // ---- ドラッグ（移動と並べ替え）
+              // HTML5 のドラッグ＆ドロップは使わず、マウスの動きで自前に行う。
+              // アプリの窓が外からのドロップを受ける仕組みと混ざらないようにするため。
+              let press = null;   // 押した所。少し動いたらドラッグを始める
+              let drag = null;    // ドラッグ中の状態
+              let swallowClick = false;
+
+              function pressRow(e, sel, single) { press = { x: e.clientX, y: e.clientY, sel, single }; }
+
+              function startDrag() {
+                const sel = press.sel, ids = new Set(sel.map(i => i.id));
+                // 動かすフォルダ自身とその下には落とせない
+                const banned = new Set();
+                let below = Infinity;
+                for (const f of folders) {
+                  if (f.depth > below) { banned.add(f.id); continue; }
+                  below = Infinity;
+                  if (ids.has(f.id)) { banned.add(f.id); below = f.depth; }
+                }
+                const ghost = el('div', null, sel.length > 1 ? fmt(L.dragN, sel.length) : sel[0].title);
+                ghost.id = 'ghost';
+                document.body.append(ghost);
+                closeMenu();
+                drag = { sel, ids, banned, ghost, target: null, hoverId: null, hoverTimer: 0, scrollEl: null, scrollDy: 0, raf: 0, x: 0, y: 0 };
+                document.body.classList.add('dragging');
+                press = null;
+              }
+
+              // 指している所から、落とし先を決める。落とせない所なら null。
+              function findTarget(x, y) {
+                const hit = document.elementFromPoint(x, y);
+                if (!hit) return null;
+                const t = hit.closest('.t-row');
+                if (t && tree.contains(t)) {
+                  if (drag.banned.has(t.dataset.id)) return null;
+                  return { to: t.dataset.id, before: null, el: t, cls: 'drop-into', hover: t.dataset.id };
+                }
+                // 一覧での並べ替えはフォルダを開いているときだけ。検索結果の中では木へ落とすだけ。
+                if (searching || !current || drag.banned.has(current) || !list.contains(hit)) return null;
+                const r = hit.closest('.row');
+                if (!r) {
+                  if (hit !== list && !hit.classList.contains('note')) return null;
+                  const rows = list.querySelectorAll('.row'), last = rows[rows.length - 1];
+                  return { to: current, before: null, el: last || list, cls: last ? 'drop-after' : 'drop-end' };
+                }
+                const i = items.findIndex(x => x.id === r.dataset.id);
+                if (i < 0 || drag.ids.has(items[i].id)) return null;
+                const it = items[i], b = r.getBoundingClientRect(), f = (y - b.top) / b.height;
+                if (it.kind === 'folder' && f > 0.25 && f < 0.75) return { to: it.id, before: null, el: r, cls: 'drop-into' };
+                if (f < 0.5) return { to: current, before: it.id, el: r, cls: 'drop-before' };
+                let next = null;   // 後ろに入れる ＝ 次の（動かさない）ものの前に入れる
+                for (let k = i + 1; k < items.length; k++) if (!drag.ids.has(items[k].id)) { next = items[k].id; break; }
+                return { to: current, before: next, el: r, cls: 'drop-after' };
+              }
+
+              function setTarget(t) {
+                const old = drag.target;
+                if (!(old && t && old.el === t.el && old.cls === t.cls)) {
+                  if (old) old.el.classList.remove(old.cls);
+                  if (t) t.el.classList.add(t.cls);
+                }
+                drag.target = t;
+                document.body.classList.toggle('no-drop', !t);
+                // 閉じている木のフォルダの上で少し待つと開く
+                const hover = (t && t.hover) || null;
+                if (hover !== drag.hoverId) {
+                  clearTimeout(drag.hoverTimer);
+                  drag.hoverId = hover;
+                  const f = hover && folders.find(x => x.id === hover);
+                  if (f && f.hasSub && !open.has(f.id))
+                    drag.hoverTimer = setTimeout(() => { if (!drag) return; open.add(f.id); drawTree(); setTarget(findTarget(drag.x, drag.y)); }, 700);
+                }
+              }
+
+              function moveDrag(x, y) {
+                drag.x = x; drag.y = y;
+                drag.ghost.style.left = (x + 14) + 'px';
+                drag.ghost.style.top = (y + 12) + 'px';
+                setTarget(findTarget(x, y));
+                // 上下の端に来たら転がす
+                drag.scrollEl = null;
+                for (const box of [list, tree]) {
+                  const r = box.getBoundingClientRect();
+                  if (x < r.left || x > r.right) continue;
+                  if (y < r.top + 28) { drag.scrollEl = box; drag.scrollDy = -Math.min(20, Math.ceil((r.top + 28 - y) / 3)); }
+                  else if (y > r.bottom - 28) { drag.scrollEl = box; drag.scrollDy = Math.min(20, Math.ceil((y - r.bottom + 28) / 3)); }
+                }
+                if (drag.scrollEl && !drag.raf) drag.raf = requestAnimationFrame(autoScroll);
+              }
+              function autoScroll() {
+                if (!drag) return;
+                drag.raf = 0;
+                if (!drag.scrollEl) return;
+                drag.scrollEl.scrollTop += drag.scrollDy;
+                setTarget(findTarget(drag.x, drag.y));
+                drag.raf = requestAnimationFrame(autoScroll);
+              }
+
+              function finishDrag(drop) {
+                const d = drag; drag = null;
+                clearTimeout(d.hoverTimer); cancelAnimationFrame(d.raf);
+                d.ghost.remove();
+                if (d.target) d.target.el.classList.remove(d.target.cls);
+                document.body.classList.remove('dragging', 'no-drop');
+                if (drop && d.target) send({ type: 'bm:drop', ids: d.sel.map(i => i.id), to: d.target.to, before: d.target.before });
+              }
+
+              window.addEventListener('mousemove', (e) => {
+                if (press && !drag) {
+                  if (!(e.buttons & 1)) { press = null; return; }
+                  if (Math.abs(e.clientX - press.x) + Math.abs(e.clientY - press.y) < 6) return;
+                  startDrag();
+                }
+                if (drag) { e.preventDefault(); moveDrag(e.clientX, e.clientY); }
+              });
+              window.addEventListener('mouseup', () => {
+                if (drag) { finishDrag(true); swallowClick = true; setTimeout(() => { swallowClick = false; }, 0); }
+                else if (press && press.single != null) choose(press.single, false, false);
+                press = null;
+              });
+              // 落とした直後のクリック（木の行を開く、など）は無かったことにする
+              document.addEventListener('click', (e) => { if (swallowClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+              window.addEventListener('blur', () => { press = null; if (drag) finishDrag(false); });
+
               // ---- 操作
               document.getElementById('nf').addEventListener('click', () => newFolderDialog(current || 'bar'));
               list.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); if (!searching) showMenu(e.clientX, e.clientY, [[L.newFolder, () => newFolderDialog(current)]]); });
@@ -670,6 +815,7 @@ internal static class Pages
                 }, 200);
               });
               document.addEventListener('keydown', (e) => {
+                if (drag) { if (e.key === 'Escape') { e.preventDefault(); finishDrag(false); } return; }
                 if (!modal.hidden || e.target === q) return;
                 if (e.key === 'a' && e.ctrlKey) { e.preventDefault(); picked = new Set(items.map(i => i.id)); mark(); return; }
                 const sel = pickedItems(); if (!sel.length) return;

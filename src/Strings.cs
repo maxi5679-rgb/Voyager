@@ -107,6 +107,7 @@ internal static class Strings
     public static string BmDeleteN => T("{0} 件を削除", "Delete {0}");
     public static string BmMove => T("移動", "Move");
     public static string BmSelected => T("{0} 件選択中", "{0} selected");
+    public static string BmDragN => T("{0} 件", "{0} items");
     public static string BmDeleted => T("{0} 件を削除しました", "Deleted {0}");
     public static string BmUndo => T("元に戻す", "Undo");
     public static string BmConfirmMany => T("{0} 件を削除します。選んだフォルダの中身も一緒に消えます。",

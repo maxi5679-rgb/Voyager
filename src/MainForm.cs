@@ -2138,6 +2138,19 @@ internal sealed class MainForm : Form
                 BookmarksChanged();
                 return;
             }
+
+            case "bm:drop":
+            {
+                // ドラッグで落とした。before の直前へ（null なら末尾へ）。同じフォルダなら並べ替え。
+                var to = Str("to");
+                if (to is null) return;
+                var moved = _bookmarks.MoveMany(Ids(msg), to, Str("before"));
+                if (moved == 0) { Log.Write("bookmark manager: drop changed nothing"); return; }
+                _bookmarks.Save();
+                Log.Write($"bookmark manager: dropped {moved} -> {FolderKind(to)} ({(Str("before") is null ? "end" : "before an item")})");
+                BookmarksChanged();
+                return;
+            }
         }
     }
 

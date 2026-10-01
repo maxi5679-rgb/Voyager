@@ -326,6 +326,61 @@ internal sealed class BookmarkStore
         return true;
     }
 
+    /// <summary>
+    /// ドラッグで落とした所へ入れる。parentId の中の beforeId の直前に、ids の順で並べる。
+    /// beforeId が null か見つからなければ末尾。同じフォルダの中なら並べ替えになる。
+    /// 根、消えたもの、ほかの選択の中に入っているもの、自分の下へ入ることになるフォルダは飛ばす。
+    /// 動かした件数を返す（並びが変わらなければ 0）。
+    /// </summary>
+    public int MoveMany(IEnumerable<string> ids, string parentId, string? beforeId)
+    {
+        if (Get(parentId) is not { IsFolder: true, IsDeleted: false }) return 0;
+        var chosen = ids.Where(id => id is not (RootBar or RootOther)).Distinct().ToList();
+        var chosenSet = chosen.ToHashSet();
+
+        bool InsideChosen(BookmarkNode n)
+        {
+            for (var p = n.ParentId is null ? null : Get(n.ParentId); p is not null; p = p.ParentId is null ? null : Get(p.ParentId))
+                if (chosenSet.Contains(p.Id)) return true;
+            return false;
+        }
+        bool WouldCycle(string id)
+        {
+            for (var p = Get(parentId); p is not null; p = p.ParentId is null ? null : Get(p.ParentId))
+                if (p.Id == id) return true;
+            return false;
+        }
+
+        var moving = chosen.Select(Get)
+            .Where(n => n is { IsDeleted: false, ParentId: not null } && !InsideChosen(n) && !WouldCycle(n.Id))
+            .Cast<BookmarkNode>()
+            .ToList();
+        if (moving.Count == 0) return 0;
+
+        var movingIds = moving.Select(n => n.Id).ToHashSet();
+        var was = Children(parentId);
+        var order = was.Where(n => !movingIds.Contains(n.Id)).ToList();
+        // 動かすもの自身の前に、と言われたら、その後ろで最初に残るものの前にする。
+        if (beforeId is not null && movingIds.Contains(beforeId))
+        {
+            var from = was.FindIndex(n => n.Id == beforeId);
+            beforeId = from < 0 ? null : was.Skip(from).FirstOrDefault(n => !movingIds.Contains(n.Id))?.Id;
+        }
+        var at = beforeId is null ? -1 : order.FindIndex(n => n.Id == beforeId);
+        order.InsertRange(at < 0 ? order.Count : at, moving);
+        if (order.Select(n => n.Id).SequenceEqual(was.Select(n => n.Id))) return 0;   // 元と同じ並び
+
+        var oldParents = moving.Select(n => n.ParentId!).Where(p => p != parentId).Distinct().ToList();
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < order.Count; i++)
+        {
+            if (movingIds.Contains(order[i].Id)) { order[i].ParentId = parentId; order[i].UpdatedAt = now; }
+            order[i].Index = i;
+        }
+        foreach (var p in oldParents) Renumber(p);
+        return moving.Count;
+    }
+
     /// <summary>並びを 0,1,2... に振り直す。ドラッグで入れ替えたあとに呼ぶ。</summary>
     public void Renumber(string parentId)
     {
