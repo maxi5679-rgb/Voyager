@@ -50,14 +50,19 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
 
 ## Features
 
-- **Tabs** that keep their WebView2 alive, so logins and scroll position survive a switch
+- **Tabs** that keep their WebView2 alive, so logins and scroll position survive a switch.
+  Drag a tab to reorder; optionally reopen last session's tabs on startup
 - **Bookmarks** — a bar and a sidebar, with import and export of Netscape bookmark files
   (the format Chrome and Firefox both use). Favicons are fetched and cached
+- **A bookmark manager** in its own tab: folder tree, search, multi-select with undo,
+  drag to move and reorder, a list of duplicates, and a broken-link check that runs only
+  when you start it
 - **Downloads** — a default folder you can set, or a prompt for every download
 - **Context menus** drawn by the app, in the app's own colors, including
   save / copy / copy-address for images
 - **Per-monitor DPI**. Fonts, icons, row heights and menus all follow the display, and
   keep their size across 96 / 144 / 192 dpi and when a window moves between monitors
+- **Japanese and English**, following the Windows display language unless you choose one
 - **An About page**, because the point was to see the name V'Ger on screen
 
 ## Layout
@@ -165,15 +170,60 @@ you clicked.
 - The debug log strips query strings and folds long paths, because image CDNs put
   hundreds of characters of token into the path itself.
 
+## Privacy
+
+Voyager has no telemetry, no analytics and no account of its own. It contacts other computers
+only as part of something you asked it to do:
+
+- opening the websites you visit, which receive what any browser sends them
+- sending a question to the AI service you selected, when you type one into the address bar
+- downloading the files and saving the images you choose
+- checking bookmark links, and only after you press "Start checking" in the bookmark manager
+
+Favicons come from the sites you open. Settings, bookmarks, logins and cookies stay on your
+computer (see [Where your data lives](#where-your-data-lives)). The debug log is off unless a
+`debug.on` file is created, and it never leaves the computer.
+
+Web pages are rendered by Microsoft Edge WebView2, which is part of Windows. What WebView2
+itself reports to Microsoft follows your Windows diagnostic-data settings and the
+[Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement).
+
 ## Still to do
 
-- **Code signing.** The build is unsigned, so SmartScreen warns on first run.
-  `signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a <msi>`
+- **Code signing.** The build is unsigned, so SmartScreen warns on first run. The plan is to
+  sign releases built by GitHub Actions through SignPath Foundation
 - History and a downloads list
-- Dragging tabs to reorder, restoring the last session
-- Following the Windows display language on its own. For now the language is chosen in Settings
 
 ## License
 
-Not decided yet. Until it is, treat this as source you can read rather than source you can
-reuse.
+Copyright (C) 2026 K-S System
+
+Voyager is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of
+the License, or (at your option) any later version. It is distributed in the hope that it
+will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+In short: if you give a modified Voyager to anyone else, you must publish the complete source
+of your version under the same license.
+
+The installer also contains components under their own licenses:
+
+| | |
+|---|---|
+| Microsoft.Web.WebView2 (the SDK, including `WebView2Loader.dll`) | BSD 3-Clause, © Microsoft Corporation |
+| .NET runtime (self-contained build) | MIT, © .NET Foundation and contributors |
+
+The WebView2 runtime itself is part of Windows and is not included.
+
+The picture on the About page is an artist's concept of Voyager 1 entering interstellar space,
+credit NASA/JPL-Caltech (PIA17462, 2013).
+
+## Name and icon
+
+The license covers the code. It does not cover the name or the icon.
+
+The name "Voyager" for this browser and the Voyager icon mark the official builds: those made
+from this repository by its GitHub Actions workflow and published on its Releases page. If
+you distribute a modified version, please give it a different name and icon. Saying that it
+is based on Voyager is fine.
