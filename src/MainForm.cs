@@ -90,6 +90,8 @@ internal sealed class MainForm : Form
     {
         // 画面を組む前に言語を決める。ここから後に作るものは全部これを見る。
         Strings.Use(_settings.Language);
+        Log.Write($"language: setting={_settings.Language} -> {Strings.Current} " +
+                  $"(Windows {System.Globalization.CultureInfo.CurrentUICulture.Name})");
 
         Text = App.Name;
         BackColor = Theme.Background;
@@ -331,7 +333,7 @@ internal sealed class MainForm : Form
             Directory.CreateDirectory(AppSettings.UserDataDir);
             var options = new CoreWebView2EnvironmentOptions
             {
-                Language = "ja-JP",
+                Language = BrowserLanguage(),
                 AllowSingleSignOnUsingOSPrimaryAccount = false,
             };
             Log.Write($"env create: userData={AppSettings.UserDataDir}");
@@ -387,6 +389,7 @@ internal sealed class MainForm : Form
                     BeginInvoke(InternalBack);
                 }
             };
+            RestoreLastTabs();
             Render();
         }
         catch (Exception ex)
@@ -551,6 +554,7 @@ internal sealed class MainForm : Form
         _settings.SidebarOpen = _sidebar.Visible;
         if (_sidebar.Visible) _settings.SidebarWidth = _sidebar.LogicalWidth;   // 96 dpi 基準で残す
         _settings.BarVisible = _bar.Visible;
+        SaveTabsForNextTime();
         _settings.Save();
         _faviconSave.Stop();   // 直後に自分で書くので、二重に書かせない
         _bookmarks.Save();
@@ -721,6 +725,7 @@ internal sealed class MainForm : Form
         _active = tab;
         CloseInternalPages();
         Render();
+        LoadIfDeferred(tab);
     }
 
     private void NewTab()
@@ -751,6 +756,60 @@ internal sealed class MainForm : Form
 
         RebuildTabStrip();
         Render();
+        LoadIfDeferred(_active);
+    }
+
+    // ---------------------------------------------------------------- 前回のタブ
+
+    /// <summary>
+    /// サイトに伝える言語（WebView2 を作るときに 1 回だけ決まる）。
+    /// "auto" なら Windows の表示言語のまま。
+    /// </summary>
+    private string BrowserLanguage() => _settings.Language switch
+    {
+        "ja" => "ja-JP",
+        "en" => "en-US",
+        _ => System.Globalization.CultureInfo.CurrentUICulture.Name is { Length: > 0 } name ? name : "en-US",
+    };
+
+    /// <summary>閉じるとき、開いていたタブを覚える。オフなら何も残さない。</summary>
+    private void SaveTabsForNextTime()
+    {
+        if (!_settings.RestoreTabs) { _settings.LastTabs = []; _settings.LastActiveTab = 0; return; }
+        var pages = _tabs.Where(t => t.Page is null && UrlHelper.IsNavigable(t.Url)).ToList();
+        _settings.LastTabs = pages.Select(t => new SavedTab(t.Url!, t.Title)).ToList();
+        _settings.LastActiveTab = Math.Max(0, pages.IndexOf(_active));
+        Log.Write($"session: saved {pages.Count} tabs");
+    }
+
+    /// <summary>
+    /// 起動したとき、前回のタブを並べ直す。前面のタブだけすぐ開き、ほかは選ばれたときに開く
+    /// （何十枚もあると、起動直後に全部が一斉に読み込みを始めて重くなるため）。
+    /// </summary>
+    private void RestoreLastTabs()
+    {
+        if (!_settings.RestoreTabs || _settings.LastTabs is not { Count: > 0 } saved) return;
+        var list = saved.Where(s => UrlHelper.IsNavigable(s.Url)).Take(100).ToList();
+        if (list.Count == 0) return;
+
+        for (var i = 0; i < list.Count; i++)
+        {
+            var tab = i == 0 ? _tabs[0] : new BrowserTab();
+            if (i > 0) _tabs.Add(tab);
+            tab.Url = list[i].Url;
+            tab.Title = string.IsNullOrWhiteSpace(list[i].Title) ? UrlHelper.HostTitle(list[i].Url) : list[i].Title!;
+        }
+        _active = _tabs[Math.Clamp(_settings.LastActiveTab, 0, list.Count - 1)];
+        RebuildTabStrip();
+        Log.Write($"session: restored {list.Count} tabs (front {_tabs.IndexOf(_active) + 1})");
+        Navigate(_active, _active.Url!);
+    }
+
+    /// <summary>前回のタブで、まだ開いていない（選ばれていない）ものなら、ここで開く。</summary>
+    private void LoadIfDeferred(BrowserTab tab)
+    {
+        if (tab.View is null && tab.Page is null && tab.Url is { } url && UrlHelper.IsNavigable(url))
+            Navigate(tab, url);
     }
 
     private void OpenInNewTab(string url)
@@ -1205,6 +1264,13 @@ internal sealed class MainForm : Form
                 _settings.Save();
                 return;
 
+            case "setRestoreTabs":
+                _settings.RestoreTabs = msg.TryGetProperty("value", out var rt) && rt.ValueKind == JsonValueKind.True;
+                if (!_settings.RestoreTabs) { _settings.LastTabs = []; _settings.LastActiveTab = 0; }
+                _settings.Save();
+                Log.Write($"session: restore tabs {(_settings.RestoreTabs ? "on" : "off")}");
+                return;
+
             case "setPageContextMenu":
                 _settings.PageContextMenu = msg.TryGetProperty("value", out var pcm) && pcm.ValueKind == JsonValueKind.True;
                 _settings.Save();
@@ -1233,7 +1299,7 @@ internal sealed class MainForm : Form
                 return;
 
             case "setLanguage":
-                _settings.Language = Str("value") == "en" ? "en" : "ja";
+                _settings.Language = Str("value") switch { "en" => "en", "ja" => "ja", _ => "auto" };
                 _settings.Save();
                 Strings.Use(_settings.Language);
                 ApplyStrings();

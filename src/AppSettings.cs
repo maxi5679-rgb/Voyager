@@ -3,6 +3,8 @@ using System.Text.Json.Serialization;
 
 namespace Voyager;
 
+internal sealed record SavedTab(string Url, string? Title);
+
 internal sealed class AppSettings
 {
     /// <summary>start | ai | google | custom</summary>
@@ -48,11 +50,19 @@ internal sealed class AppSettings
     public string LastBookmarkFolder { get; set; } = "";
 
     /// <summary>
-    /// 画面の言語。"ja" か "en"。
-    /// いまは設定で明示的に選ぶ。将来 "auto"（Windows の表示言語に従う）を足して
-    /// それを既定にする予定なので、bool ではなく文字列にしてある。
+    /// 画面の言語。"auto"（Windows の表示言語に従う）、"ja"、"en"。
+    /// 初めて起動した人は "auto"。前から使っている人は、保存済みの値（"ja" など）がそのまま残る。
     /// </summary>
-    public string Language { get; set; } = "ja";
+    public string Language { get; set; } = "auto";
+
+    /// <summary>起動したとき、前回閉じたときのタブを開き直すか。既定はしない（Chrome と同じ）。</summary>
+    public bool RestoreTabs { get; set; }
+
+    /// <summary>前回閉じたときのタブ。RestoreTabs がオフのときは空にしておく（見たページを残さない）。</summary>
+    public List<SavedTab> LastTabs { get; set; } = [];
+
+    /// <summary>LastTabs のうち、前面にあったタブの番号。</summary>
+    public int LastActiveTab { get; set; }
 
     [JsonIgnore]
     public static string Dir { get; } = Path.Combine(

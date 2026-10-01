@@ -262,8 +262,9 @@ internal static class Pages
               <h2>{{E(Strings.LanguageHeading)}}</h2>
               <div class="grid">
                 <select class="field" data-change='{"type":"setLanguage"}'>
-                  <option value="ja"{{(Strings.Current == "ja" ? " selected" : "")}}>日本語</option>
-                  <option value="en"{{(Strings.Current == "en" ? " selected" : "")}}>English</option>
+                  <option value="auto"{{(s.Language is not ("ja" or "en") ? " selected" : "")}}>{{E(Strings.LanguageAuto)}}</option>
+                  <option value="ja"{{(s.Language == "ja" ? " selected" : "")}}>日本語</option>
+                  <option value="en"{{(s.Language == "en" ? " selected" : "")}}>English</option>
                 </select>
               </div>
               <p class="meta">{{E(Strings.LanguageNote)}}</p>
@@ -271,6 +272,12 @@ internal static class Pages
               <h2>{{E(Strings.HomeHeading)}}</h2>
               <div class="grid">{{choices}}</div>
               <div class="grid">{{customRow}}</div>
+              <h2>{{E(Strings.StartupHeading)}}</h2>
+              <label class="check">
+                <input type="checkbox" {{(s.RestoreTabs ? "checked" : "")}} data-change='{"type":"setRestoreTabs"}' />
+                {{E(Strings.RestoreTabs)}}
+              </label>
+              <p class="meta">{{E(Strings.RestoreTabsNote)}}</p>
               <h2>{{E(Strings.AiHeading)}}</h2>
               <label class="check">
                 <input type="checkbox" {{(s.RememberEngine ? "checked" : "")}} data-change='{"type":"setRemember"}' />

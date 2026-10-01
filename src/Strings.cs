@@ -13,8 +13,19 @@ internal static class Strings
 {
     private static bool _en;
 
-    /// <summary>"ja" か "en"。それ以外は日本語として扱う。</summary>
-    public static void Use(string? lang) => _en = string.Equals(lang, "en", StringComparison.OrdinalIgnoreCase);
+    /// <summary>"ja"、"en"、"auto"。"auto"（や知らない値）は Windows の表示言語で決める。</summary>
+    public static void Use(string? lang) => _en = Resolve(lang) == "en";
+
+    /// <summary>
+    /// 設定の値を、実際に使う言語（"ja" か "en"）にする。
+    /// "auto" は Windows の表示言語が日本語なら日本語、それ以外は英語。
+    /// </summary>
+    public static string Resolve(string? lang) => lang?.ToLowerInvariant() switch
+    {
+        "ja" => "ja",
+        "en" => "en",
+        _ => System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ja" ? "ja" : "en",
+    };
 
     public static string Current => _en ? "en" : "ja";
 
@@ -246,9 +257,14 @@ internal static class Strings
     public static string SettingsLead => T("ホームボタンの行き先と、使う AI を決めます。",
                                            "Where the home button goes, and which AI to use.");
     public static string LanguageHeading => T("言語 / Language", "Language / 言語");
+    public static string LanguageAuto => T("自動（Windows に合わせる） / Automatic", "Automatic (follow Windows) / 自動");
+    public static string StartupHeading => T("起動時", "On startup");
+    public static string RestoreTabs => T("前回開いていたタブを開き直す", "Reopen the tabs from last time");
+    public static string RestoreTabsNote => T("前面にあったタブだけをすぐに読み込み、ほかのタブは選んだときに読み込みます。",
+                                             "Only the front tab loads right away; the others load when you pick them.");
     public static string LanguageNote =>
-        T("ブックマークのフォルダ名（「ブックマーク バー」など）は表示だけ読み替えます。保存されている名前は変わりません。",
-          "Built-in folder names are only re-labeled on screen. The names stored in your bookmarks do not change.");
+        T("ブックマークのフォルダ名（「ブックマーク バー」など）は表示だけ読み替えます。保存されている名前は変わりません。サイトに伝える言語は、次に起動したときから切り替わります。",
+          "Built-in folder names are only re-labeled on screen. The names stored in your bookmarks do not change. The language sent to websites changes the next time Voyager starts.");
 
     public static string HomeHeading => T("ホーム", "Home");
     public static string HomeStart => T("スタート画面", "Start page");
