@@ -36,7 +36,7 @@ internal static class BookmarkManager
         foreach (var root in new[] { BookmarkStore.RootBar, BookmarkStore.RootOther })
             if (store.Get(root) is { } r) Walk(r, 0);
 
-        return new { type = "bm:tree", folders, selected };
+        return new { type = "bm:tree", folders, selected, dups = DuplicateGroups(store).Count };
     }
 
     /// <summary>1 フォルダ分の中身。</summary>
@@ -46,7 +46,7 @@ internal static class BookmarkManager
         var iconIndex = new Dictionary<string, int>();
         var kids = ChildrenMap(store);
         var items = store.Children(folderId).Select(n => Item(n, kids, icons, iconIndex, path: null)).ToList();
-        return new { type = "bm:items", folder = folderId, search = (string?)null, items, icons };
+        return new { type = "bm:items", folder = folderId, search = (string?)null, view = (string?)null, items, icons };
     }
 
     /// <summary>検索結果。どのフォルダに入っているかも付ける。</summary>
@@ -58,11 +58,62 @@ internal static class BookmarkManager
         var items = store.Search(query, 500)
             .Select(n => Item(n, kids, icons, iconIndex, path: PathLabel(store, n)))
             .ToList();
-        return new { type = "bm:items", folder = (string?)null, search = query, items, icons };
+        return new { type = "bm:items", folder = (string?)null, search = query, view = (string?)null, items, icons };
+    }
+
+    /// <summary>
+    /// 同じアドレスのブックマーク。グループごとに並べ、各グループの先頭は「残す候補」:
+    /// ブックマーク バーの中にあるものを先に、次に古いものを先にする。
+    /// </summary>
+    public static object Duplicates(BookmarkStore store)
+    {
+        var icons = new List<string>();
+        var iconIndex = new Dictionary<string, int>();
+        var kids = ChildrenMap(store);
+        var items = new List<object>();
+        var groups = DuplicateGroups(store);
+        for (var g = 0; g < groups.Count && items.Count < 1000; g++)
+            foreach (var n in groups[g])
+                items.Add(Item(n, kids, icons, iconIndex, path: PathLabel(store, n), group: g));
+        return new { type = "bm:items", folder = (string?)null, search = (string?)null, view = "dups", items, icons };
+    }
+
+    /// <summary>重複のグループ。2 件以上あるアドレスだけ。</summary>
+    public static List<List<BookmarkNode>> DuplicateGroups(BookmarkStore store) =>
+        store.Nodes
+            .Where(n => n.IsLink && !n.IsDeleted && !string.IsNullOrWhiteSpace(n.Url))
+            .GroupBy(n => DupKey(n.Url!))
+            .Where(g => g.Count() > 1)
+            .Select(g => g.OrderBy(n => InBar(store, n) ? 0 : 1)
+                          .ThenBy(n => n.AddedAt ?? DateTimeOffset.MaxValue)
+                          .ToList())
+            .OrderBy(g => g[0].Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+    /// <summary>
+    /// 重複を見分けるためのアドレス。# 以降と既定のポート番号を落とし、ホスト名は小文字にそろえ、
+    /// 「?」の無いアドレスの末尾の「/」は無視する。http と https、www の有無は別のものとして扱う。
+    /// </summary>
+    public static string DupKey(string url)
+    {
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u)) return url.Trim();
+        var key = u.GetComponents(UriComponents.SchemeAndServer | UriComponents.PathAndQuery, UriFormat.UriEscaped);
+        return key.Contains('?') ? key : key.TrimEnd('/');
+    }
+
+    private static bool InBar(BookmarkStore store, BookmarkNode n)
+    {
+        var cur = n.ParentId is null ? null : store.Get(n.ParentId);
+        for (var guard = 0; cur is not null && guard < 64; guard++)
+        {
+            if (cur.Id == BookmarkStore.RootBar) return true;
+            cur = cur.ParentId is null ? null : store.Get(cur.ParentId);
+        }
+        return false;
     }
 
     private static object Item(BookmarkNode n, Dictionary<string, List<BookmarkNode>> kids,
-                               List<string> icons, Dictionary<string, int> iconIndex, string? path)
+                               List<string> icons, Dictionary<string, int> iconIndex, string? path, int group = -1)
     {
         var icon = -1;
         if (n.IsLink && !string.IsNullOrEmpty(n.Icon))
@@ -75,7 +126,7 @@ internal static class BookmarkManager
             }
         }
         var count = n.IsFolder && kids.TryGetValue(n.Id, out var list) ? list.Count : 0;
-        return new { id = n.Id, kind = n.Kind, title = Label(n), url = n.Url, icon, count, path };
+        return new { id = n.Id, kind = n.Kind, title = Label(n), url = n.Url, icon, count, path, parent = n.ParentId, group };
     }
 
     private static string Label(BookmarkNode n) =>

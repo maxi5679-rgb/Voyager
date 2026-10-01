@@ -108,6 +108,12 @@ internal static class Strings
     public static string BmMove => T("移動", "Move");
     public static string BmSelected => T("{0} 件選択中", "{0} selected");
     public static string BmDragN => T("{0} 件", "{0} items");
+    public static string BmDuplicates => T("重複", "Duplicates");
+    public static string BmNoDuplicates => T("同じアドレスのブックマークはありません。", "No bookmarks share an address.");
+    public static string BmDupNote => T("同じアドレスのブックマークです。各グループの先頭（バーにあるもの、無ければ一番古いもの）を残す候補にしています。",
+                                       "Bookmarks with the same address. The first of each group (the one on the bar, or else the oldest) is the one to keep.");
+    public static string BmSelectExtras => T("先頭以外をすべて選ぶ", "Select all but the first of each");
+    public static string BmShowInFolder => T("フォルダを表示", "Show in folder");
     public static string BmDeleted => T("{0} 件を削除しました", "Deleted {0}");
     public static string BmUndo => T("元に戻す", "Undo");
     public static string BmConfirmMany => T("{0} 件を削除します。選んだフォルダの中身も一緒に消えます。",

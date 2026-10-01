@@ -2012,13 +2012,16 @@ internal sealed class MainForm : Form
         if (!ManagerShowing) return;
         if (_bookmarks.Get(_bmFolder) is not { IsFolder: true, IsDeleted: false }) _bmFolder = BookmarkStore.RootBar;
         PostToManager(BookmarkManager.Tree(_bookmarks, _bmFolder));
-        PostToManager(_bmSearch.Length > 0
-            ? BookmarkManager.Search(_bookmarks, _bmSearch)
+        PostToManager(_bmView == "dups" ? BookmarkManager.Duplicates(_bookmarks)
+            : _bmSearch.Length > 0 ? BookmarkManager.Search(_bookmarks, _bmSearch)
             : BookmarkManager.Items(_bookmarks, _bmFolder));
     }
 
     /// <summary>最後にマネージャーで消したもの。「元に戻す」は直前の 1 回分だけ。</summary>
     private BookmarkStore.Removal? _bmUndo;
+
+    /// <summary>フォルダでも検索でもない見方（"dups" ＝ 重複）。空ならふつう。</summary>
+    private string _bmView = "";
     private string? _bmUndoToken;
 
     private static IEnumerable<string> Ids(JsonElement msg) =>
@@ -2035,6 +2038,7 @@ internal sealed class MainForm : Form
         {
             case "bm:init":
                 _bmSearch = "";
+                _bmView = "";
                 RefreshManager();
                 return;
 
@@ -2043,12 +2047,23 @@ internal sealed class MainForm : Form
                 {
                     _bmFolder = folder;
                     _bmSearch = "";
+                    _bmView = "";
                     PostToManager(BookmarkManager.Items(_bookmarks, folder));
                 }
                 return;
 
             case "bm:search":
                 _bmSearch = Str("q")?.Trim() ?? "";
+                _bmView = "";
+                RefreshManager();
+                return;
+
+            case "bm:view":
+                // 重複の一覧など、フォルダではない見方。
+                _bmView = Str("view") is "dups" ? "dups" : "";
+                _bmSearch = "";
+                if (_bmView == "dups")
+                    Log.Write($"bookmark manager: duplicates ({BookmarkManager.DuplicateGroups(_bookmarks).Count} groups)");
                 RefreshManager();
                 return;
 

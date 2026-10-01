@@ -348,6 +348,11 @@ internal static class Pages
             move = Strings.BmMove,
             selected = Strings.BmSelected,
             dragN = Strings.BmDragN,
+            dups = Strings.BmDuplicates,
+            noDups = Strings.BmNoDuplicates,
+            dupNote = Strings.BmDupNote,
+            selectExtras = Strings.BmSelectExtras,
+            showInFolder = Strings.BmShowInFolder,
             deleted = Strings.BmDeleted,
             undo = Strings.BmUndo,
         });
@@ -409,6 +414,12 @@ internal static class Pages
                        white-space:nowrap; padding:4px 10px; border-radius:8px; background:#26301b; border:1px solid #7d9a4c; font-size:12px; }
               body.dragging, body.dragging * { cursor:grabbing !important; }
               body.dragging.no-drop, body.dragging.no-drop * { cursor:no-drop !important; }
+              /* 重複などの見方 */
+              .t-sep { border-top:1px solid #2d3228; margin:8px 6px; }
+              .grp { color:#c6cbb8; font-size:12px; padding:12px 10px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border-top:1px solid #23271e; }
+              .grp b { color:#9ec25f; font-weight:normal; margin-left:8px; }
+              .vbar { display:flex; align-items:center; gap:12px; padding:10px 10px 6px; color:#9aa190; font-size:12px; }
+              .vbar span { flex:1; }
             </style>
             <div class="bm">
               <div class="bm-top">
@@ -427,6 +438,7 @@ internal static class Pages
             <script>
               const L = {{labels}};
               let folders = [], current = null, searching = null, items = [], icons = [];
+              let view = null, dupCount = 0;   // view: フォルダでも検索でもない見方（'dups' ＝ 重複）
               let picked = new Set(), anchor = -1;   // 選んでいる id と、Shift で範囲を取るときの起点
               const open = new Set(['bar', 'other']);
 
@@ -457,7 +469,7 @@ internal static class Pages
                 for (const f of folders) {
                   if (f.depth > hideBelow) continue;
                   hideBelow = Infinity;
-                  const row = el('div', 't-row' + (f.id === current && !searching ? ' on' : ''));
+                  const row = el('div', 't-row' + (f.id === current && !searching && !view ? ' on' : ''));
                   row.dataset.id = f.id;
                   row.style.paddingLeft = (8 + f.depth * 14) + 'px';
                   const tog = el('span', 't-tog', f.hasSub ? (open.has(f.id) ? '▾' : '▸') : '');
@@ -471,10 +483,21 @@ internal static class Pages
                   tree.append(row);
                   if (f.hasSub && !open.has(f.id)) hideBelow = f.depth;
                 }
+                tree.append(el('div', 't-sep'));
+                const dup = el('div', 't-row' + (view === 'dups' ? ' on' : ''));
+                dup.append(el('span', 't-tog', '⧉'), el('span', 't-name', L.dups), el('span', 't-count', '(' + dupCount.toLocaleString() + ')'));
+                dup.addEventListener('click', () => openView('dups'));
+                tree.append(dup);
+              }
+
+              function openView(v) {
+                view = v; searching = null; q.value = ''; picked.clear(); anchor = -1;
+                drawTree();
+                send({ type: 'bm:view', view: v });
               }
 
               function selectFolder(id) {
-                current = id; searching = null; q.value = ''; picked.clear(); anchor = -1;
+                current = id; searching = null; view = null; q.value = ''; picked.clear(); anchor = -1;
                 for (const p of parentsOf(id)) open.add(p);
                 drawTree();
                 send({ type: 'bm:list', folder: id });
@@ -483,10 +506,27 @@ internal static class Pages
               // ---- 一覧
               function drawList() {
                 list.replaceChildren();
-                if (!items.length) { list.append(el('div', 'note', searching ? L.noHits : L.empty)); showCount(); return; }
+                const flat = searching || view;
+                if (!items.length) { list.append(el('div', 'note', view === 'dups' ? L.noDups : searching ? L.noHits : L.empty)); showCount(); return; }
                 if (searching) list.append(el('div', 'note', fmt(L.hits, items.length)));
+                if (view === 'dups') {
+                  const bar = el('div', 'vbar');
+                  const pickExtras = el('button', 'btn', L.selectExtras);
+                  pickExtras.addEventListener('click', () => {
+                    picked = new Set(items.filter((it, i) => i > 0 && items[i - 1].group === it.group).map(it => it.id));
+                    anchor = -1; mark();
+                  });
+                  bar.append(el('span', null, L.dupNote), pickExtras);
+                  list.append(bar);
+                }
                 items.forEach((it, i) => {
-                  const row = el('div', 'row' + (searching ? ' with-path' : ''));
+                  if (view === 'dups' && (i === 0 || items[i - 1].group !== it.group)) {
+                    let n = 0; for (let k = i; k < items.length && items[k].group === it.group; k++) n++;
+                    const head = el('div', 'grp', it.url || '');
+                    head.append(el('b', null, fmt(L.dragN, n)));
+                    list.append(head);
+                  }
+                  const row = el('div', 'row' + (flat ? ' with-path' : ''));
                   row.dataset.id = it.id;
                   let ic;
                   if (it.kind === 'folder') ic = el('div', 'fold');
@@ -494,7 +534,7 @@ internal static class Pages
                   else ic = el('span');
                   row.append(ic, el('div', 'ttl', it.kind === 'folder' ? it.title + '  (' + it.count + ')' : it.title));
                   row.append(el('div', 'url', it.kind === 'folder' ? '' : (it.url || '')));
-                  if (searching) row.append(el('div', 'path', it.path || ''));
+                  if (flat) row.append(el('div', 'path', it.path || ''));
                   if (it.url) row.title = it.title + '\n' + it.url;
                   row.addEventListener('mousedown', (e) => {
                     if (e.button !== 0) return;
@@ -567,9 +607,11 @@ internal static class Pages
                   showMenu(x, y, [[L.open, () => selectFolder(it.id)], null,
                     [L.rename, () => editDialog(it)], [L.moveTo, () => moveDialog([it])], [L.delete, () => remove([it])]]);
                 } else {
-                  showMenu(x, y, [[L.open, () => activate(it, false)], [L.openNewTab, () => activate(it, true)], null,
-                    [L.copyUrl, () => send({ type: 'clip', text: it.url || '' })], null,
-                    [L.edit, () => editDialog(it)], [L.moveTo, () => moveDialog([it])], [L.delete, () => remove([it])]]);
+                  const rows = [[L.open, () => activate(it, false)], [L.openNewTab, () => activate(it, true)], null,
+                    [L.copyUrl, () => send({ type: 'clip', text: it.url || '' })]];
+                  if ((searching || view) && it.parent) rows.push([L.showInFolder, () => selectFolder(it.parent)]);
+                  rows.push(null, [L.edit, () => editDialog(it)], [L.moveTo, () => moveDialog([it])], [L.delete, () => remove([it])]);
+                  showMenu(x, y, rows);
                 }
               }
               function folderMenu(x, y, f) {
@@ -714,7 +756,7 @@ internal static class Pages
                   return { to: t.dataset.id, before: null, el: t, cls: 'drop-into', hover: t.dataset.id };
                 }
                 // 一覧での並べ替えはフォルダを開いているときだけ。検索結果の中では木へ落とすだけ。
-                if (searching || !current || drag.banned.has(current) || !list.contains(hit)) return null;
+                if (searching || view || !current || drag.banned.has(current) || !list.contains(hit)) return null;
                 const r = hit.closest('.row');
                 if (!r) {
                   if (hit !== list && !hit.classList.contains('note')) return null;
@@ -802,7 +844,7 @@ internal static class Pages
 
               // ---- 操作
               document.getElementById('nf').addEventListener('click', () => newFolderDialog(current || 'bar'));
-              list.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); if (!searching) showMenu(e.clientX, e.clientY, [[L.newFolder, () => newFolderDialog(current)]]); });
+              list.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); if (!searching && !view) showMenu(e.clientX, e.clientY, [[L.newFolder, () => newFolderDialog(current)]]); });
               list.addEventListener('mousedown', (e) => { if (e.button === 0 && e.target === list) { picked.clear(); anchor = -1; mark(); } });
               let timer = 0;
               q.addEventListener('input', () => {
@@ -810,7 +852,7 @@ internal static class Pages
                 timer = setTimeout(() => {
                   const text = q.value.trim();
                   if (!text) { selectFolder(current || 'bar'); return; }
-                  searching = text; picked.clear(); anchor = -1; drawTree();
+                  searching = text; view = null; picked.clear(); anchor = -1; drawTree();
                   send({ type: 'bm:search', q: text });
                 }, 200);
               });
@@ -828,12 +870,13 @@ internal static class Pages
               window.chrome?.webview?.addEventListener('message', (e) => {
                 const m = e.data;
                 if (m.type === 'bm:tree') {
-                  folders = m.folders;
+                  folders = m.folders; dupCount = m.dups || 0;
                   if (!current) { current = m.selected; for (const p of parentsOf(current)) open.add(p); }
                   if (!folders.some(f => f.id === current)) current = 'bar';
                   drawTree();
                 } else if (m.type === 'bm:items') {
-                  if ((m.search || null) !== searching || (!m.search && m.folder !== current)) return; // 古い返事
+                  if ((m.view || null) !== view || (m.search || null) !== searching ||
+                      (!m.search && !m.view && m.folder !== current)) return; // 古い返事
                   items = m.items; icons = m.icons;
                   const alive = new Set(items.map(i => i.id));
                   picked = new Set([...picked].filter(id => alive.has(id)));
