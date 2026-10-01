@@ -202,14 +202,20 @@ internal sealed class MainForm : Form
         _omni.PlaceholderText = Strings.OmniPlaceholder;
         _omni.TabStop = false;   // 起動直後にここへフォーカスが来ないように
         _omni.TextChanged += (_, _) => { if (!_omniSyncing) _omniEditing = true; };
-        _omni.Leave += (_, _) => { _omniEditing = false; _omniFresh = false; };
+        // 追跡用の引数は、見ているあいだだけ畳む。触ったら元の全体に戻す（直す・コピーするのは本物）。
+        _omni.Leave += (_, _) =>
+        {
+            _omniEditing = false;
+            _omniFresh = false;
+            if (IsHandleCreated && !Disposing && !IsDisposed) BeginInvoke(() => { if (!IsDisposed) UpdateChrome(); });
+        };
 
         // よそからアドレス欄に入ってきた最初の 1 クリックだけ、URL を丸ごと選ぶ。
         // 2 回目からは普通にキャレットが置けるので、URL の一部だけ直すのも邪魔しない。
         //
         // MouseDown ではなく MouseUp で選ぶ理由：押した時点で選んでも、その後
         // TextBox の既定の処理が離した位置にキャレットを置き直して選択が消える。
-        _omni.Enter += (_, _) => _omniFresh = true;
+        _omni.Enter += (_, _) => { _omniFresh = true; ShowFullUrl(); };
         _omni.MouseUp += (_, _) =>
         {
             if (!_omniFresh) return;
@@ -470,8 +476,10 @@ internal sealed class MainForm : Form
 
         // 出す直前に、押せるものだけ押せるようにする。灰色のまま並んでいる方が
         // 「いま何ができるか」が読めるので、項目そのものは隠さない。
+        menu.Closed += (_, _) => { if (!_omni.Focused) UpdateChrome(); };
         menu.Opening += (_, _) =>
         {
+            ShowFullUrl();
             var sel = _omni.SelectionLength > 0;
             undo.Enabled = _omni.CanUndo;
             cut.Enabled = sel;
@@ -596,6 +604,18 @@ internal sealed class MainForm : Form
         UpdateChrome();
     }
 
+    /// <summary>
+    /// アドレス欄を、畳んでいない元のアドレスにする。入ってきたときと右クリックのとき。
+    /// 打ち込み中は触らない。
+    /// </summary>
+    private void ShowFullUrl()
+    {
+        if (_omniEditing || _active.Url is not { } url || _omni.Text == url) return;
+        _omniSyncing = true;
+        _omni.Text = url;
+        _omniSyncing = false;
+    }
+
     private static string LogHtml(string html)
     {
         Log.Write($"  html generated: {html.Length} chars, head={html[..Math.Min(60, html.Length)].Replace("\n", " ")}");
@@ -611,10 +631,11 @@ internal sealed class MainForm : Form
         // 起動直後からフォーカスを持っていると、一度も URL が入らなくなる）。
         // 代入しただけでは横スクロールが右端に残り、長い URL は末尾しか見えないので先頭へ戻す。
         var url = _active.Url ?? "";
-        if (!_omniEditing && _omni.Text != url)
+        var shown = _omni.Focused ? url : UrlHelper.WithoutTracking(url);
+        if (!_omniEditing && _omni.Text != shown)
         {
             _omniSyncing = true;
-            _omni.Text = url;
+            _omni.Text = shown;
             _omni.SelectionStart = 0;
             _omni.SelectionLength = 0;
             _omniSyncing = false;
@@ -745,7 +766,8 @@ internal sealed class MainForm : Form
 
     // ---------------------------------------------------------------- ナビゲーション
 
-    private async void Navigate(BrowserTab tab, string url)
+    /// <param name="focusPage">開いたあと、ページにフォーカスを移す（アドレス欄から開いたとき）。</param>
+    private async void Navigate(BrowserTab tab, string url, bool focusPage = false)
     {
         if (!UrlHelper.IsNavigable(url)) return;
 
@@ -769,6 +791,14 @@ internal sealed class MainForm : Form
             tab.Url = null;
         }
         Render();
+
+        // Chrome と同じく、アドレス欄で Enter を押したらページへフォーカスを移す。
+        // アドレス欄にカーソルが残ったままだと、追跡用の引数を畳んだ表示にならない。
+        if (focusPage && ReferenceEquals(tab, _active) && tab.View is { Visible: true } view)
+        {
+            view.Focus();
+            Log.Write("omni: focus moved to the page");
+        }
     }
 
     private async Task EnsureView(BrowserTab tab)
@@ -1027,7 +1057,7 @@ internal sealed class MainForm : Form
 
         _engine ??= Engines.Default;
         var url = UrlHelper.Parse(text);
-        Navigate(_active, url ?? _engine.Ask(text));
+        Navigate(_active, url ?? _engine.Ask(text), focusPage: true);
     }
 
     private void GoHome()
