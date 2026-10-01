@@ -288,10 +288,13 @@ internal sealed class BookmarkSidebar : Panel
         if (e.Node.Nodes.Count != 1 || e.Node.Nodes[0].Tag is not null) return;   // 仮の子だけが Tag を持たない
         if (e.Node.Tag is not BookmarkNode b) return;
 
+        var t = Environment.TickCount64;
         _tree.BeginUpdate();
         e.Node.Nodes.Clear();
-        foreach (var child in _store.Children(b.Id)) e.Node.Nodes.Add(MakeNode(child));
+        var children = _store.Children(b.Id);
+        foreach (var child in children) e.Node.Nodes.Add(MakeNode(child));
         _tree.EndUpdate();
+        Log.Write($"sidebar: opened a folder with {children.Count} items in {Environment.TickCount64 - t}ms");
     }
 
     // ---------------------------------------------------------------- 操作

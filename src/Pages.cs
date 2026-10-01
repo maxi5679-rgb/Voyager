@@ -456,7 +456,8 @@ internal static class Pages
               const L = {{labels}};
               let folders = [], current = null, searching = null, items = [], icons = [];
               let view = null, dupCount = 0;   // view: フォルダでも検索でもない見方（'dups' ＝ 重複、'dead' ＝ リンク切れ）
-              let deadCount = null, check = null;   // リンク切れ: 木に出す数（未確認なら null）と、確認の進み具合
+              let deadCount = null, check = null;
+              let listAsked = 0;   // フォルダを押した時刻。一覧が描き終わるまでの時間を測る   // リンク切れ: 木に出す数（未確認なら null）と、確認の進み具合
               let picked = new Set(), anchor = -1;   // 選んでいる id と、Shift で範囲を取るときの起点
               const open = new Set(['bar', 'other']);
 
@@ -543,6 +544,7 @@ internal static class Pages
 
               function selectFolder(id) {
                 current = id; searching = null; view = null; q.value = ''; picked.clear(); anchor = -1;
+                listAsked = performance.now();
                 for (const p of parentsOf(id)) open.add(p);
                 drawTree();
                 send({ type: 'bm:list', folder: id });
@@ -936,7 +938,15 @@ internal static class Pages
                   const alive = new Set(items.map(i => i.id));
                   picked = new Set([...picked].filter(id => alive.has(id)));
                   anchor = -1;
+                  const t0 = performance.now();
                   drawList();
+                  if (listAsked && !m.search && !m.view) {
+                    const asked = listAsked, draw = Math.round(performance.now() - t0);
+                    listAsked = 0;
+                    // 描いた結果が画面に出たあと（次の描画の後）で測る
+                    requestAnimationFrame(() => setTimeout(() =>
+                      send({ type: 'bm:perf', rows: items.length, ms: Math.round(performance.now() - asked), draw }), 0));
+                  }
                 } else if (m.type === 'bm:check') {
                   check = m.check;
                   const old = document.getElementById('checkbar');

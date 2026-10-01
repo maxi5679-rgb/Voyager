@@ -2000,10 +2000,12 @@ internal sealed class MainForm : Form
     private bool ManagerShowing =>
         _active.Page == BookmarkManager.PageId && !_settingsOpen && !_aboutOpen && _uiView.CoreWebView2 is not null;
 
-    private void PostToManager(object message)
+    private void PostToManager(object message) => PostJsonToManager(JsonSerializer.Serialize(message));
+
+    private void PostJsonToManager(string json)
     {
         if (!ManagerShowing) return;
-        try { _uiView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message)); }
+        try { _uiView.CoreWebView2.PostWebMessageAsJson(json); }
         catch (Exception ex) when (ex is COMException or InvalidOperationException) { }
     }
 
@@ -2087,7 +2089,13 @@ internal sealed class MainForm : Form
                     _bmFolder = folder;
                     _bmSearch = "";
                     _bmView = "";
-                    PostToManager(BookmarkManager.Items(_bookmarks, folder));
+                    // 大きなフォルダを開くのが遅い件の切り分け用。組み立てと受け渡しの時間を残す。
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    var json = JsonSerializer.Serialize(BookmarkManager.Items(_bookmarks, folder));
+                    var built = sw.ElapsedMilliseconds;
+                    PostJsonToManager(json);
+                    Log.Write($"bookmark manager: list {_bookmarks.Children(folder).Count} items, {json.Length / 1024} KB, " +
+                              $"built {built}ms, posted {sw.ElapsedMilliseconds - built}ms");
                 }
                 return;
 
@@ -2161,7 +2169,8 @@ internal sealed class MainForm : Form
                 _bookmarks.Save();
                 _bmUndo = removal;
                 _bmUndoToken = Guid.NewGuid().ToString("N");
-                Log.Write($"bookmark manager: deleted {removal.Tops.Count} ({removal.All.Count} with contents)");
+                Log.Write($"bookmark manager: deleted {removal.Tops.Count} chosen " +
+                          $"({removal.All.Count} entries counting what was inside folders)");
                 BookmarksChanged();
                 PostToManager(new { type = "bm:deleted", token = _bmUndoToken, count = removal.Tops.Count });
                 return;
@@ -2190,6 +2199,14 @@ internal sealed class MainForm : Form
                 _bookmarks.Save();
                 Log.Write($"bookmark manager: moved {moved} -> {FolderKind(to)}");
                 BookmarksChanged();
+                return;
+            }
+
+            case "bm:perf":
+            {
+                // ページ側で、フォルダを押してから一覧が描き終わるまで。
+                int Num(string name) => msg.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : -1;
+                Log.Write($"bookmark manager: list shown {Num("rows")} rows {Num("ms")}ms after the click (drawing {Num("draw")}ms)");
                 return;
             }
 

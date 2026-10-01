@@ -22,7 +22,8 @@ internal sealed class LinkChecker
 {
     public enum Kind { Ok, Dead, Unsure }
     public enum Reason { None, NotFound, NoHost, Refused, Denied, TooMany, Server, Timeout, Tls, Other }
-    public sealed record Result(Kind Kind, Reason Reason, int Status);
+    /// <summary>Final は転送されたあとのアドレス（転送が無ければ null）。</summary>
+    public sealed record Result(Kind Kind, Reason Reason, int Status, string? Final = null);
 
     private const int Workers = 2;
     private const int SuspiciousStreak = 15;
@@ -99,6 +100,11 @@ internal sealed class LinkChecker
                 if (_cts.IsCancellationRequested) return;
                 Results[id] = result;
                 Interlocked.Increment(ref _done);
+                // 誤判定を後から追えるよう、問題があったものだけ記録する（? 以降と長いパスは伏せる）。
+                if (result.Kind != Kind.Ok)
+                    Log.Write($"link check: {(result.Kind == Kind.Dead ? "BROKEN" : "unsure")} {result.Reason}" +
+                              $"{(result.Status > 0 ? $" {result.Status}" : "")} {Log.Url(url)}" +
+                              $"{(result.Final is { } f ? $" -> {Log.Url(f)}" : "")}");
                 if (await NetworkLooksDownAsync(id, url, result)) return;
                 Checked?.Invoke(id, result);
             }
@@ -210,7 +216,8 @@ internal sealed class LinkChecker
             req.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,*/*;q=0.8");
             // 中身は読まない。頭が来たら切る。
             using var res = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            return Classify((int)res.StatusCode);
+            var final = res.RequestMessage?.RequestUri?.ToString();
+            return Classify((int)res.StatusCode) with { Final = final == url || final == new Uri(url).ToString() ? null : final };
         }
         catch (OperationCanceledException) when (!_cts.IsCancellationRequested)
         {
