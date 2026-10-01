@@ -15,8 +15,8 @@ build (~200 MB) and a thin WebView2 build (v0.2.0).
 ## What it does
 
 The address bar takes either a URL or a question. A URL opens as you would expect; anything
-else is sent to whichever AI you have selected (Gemini, ChatGPT, Claude, Meta AI, DeepSeek,
-Grok, Perplexity). A handful of words — `google`, `ぐぐる`, `ようつべ` and friends — open the
+else is sent to whichever AI you have selected (Grok, ChatGPT, Claude, Gemini,
+Perplexity, Copilot). A handful of words — `google`, `ぐぐる`, `ようつべ` and friends — open the
 site instead of searching for it.
 
 Everything else is an ordinary browser: tabs that keep their state, a bookmarks bar and

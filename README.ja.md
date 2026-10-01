@@ -14,7 +14,7 @@ The English README is at [README.md](README.md).
 ## 何をするもの
 
 アドレス欄は URL でも質問でも受け付ける。URL ならそのまま開き、それ以外は選んでいる AI
-（Gemini / ChatGPT / Claude / Meta AI / DeepSeek / Grok / Perplexity）へ送る。`google` `ぐぐる`
+（Grok / ChatGPT / Claude / Gemini / Perplexity / Copilot）へ送る。`google` `ぐぐる`
 `ようつべ` といった語だけは、検索せずにそのサイトを開く。
 
 あとは普通のブラウザ。状態を保つタブ、ブックマークのバーとサイドバー、ダウンロード、
