@@ -30,6 +30,17 @@ internal sealed class TabItem : Panel
     public event EventHandler? Activated;
     public event EventHandler? CloseRequested;
 
+    /// <summary>ドラッグ中。int はマウスの画面上の X。並べ替えは受け手（MainForm）が行う。</summary>
+    public event Action<TabItem, int>? DragMoved;
+
+    /// <summary>ドラッグが終わった（離した、またはマウスを奪われた）。</summary>
+    public event Action<TabItem>? DragEnded;
+
+    private Point _downAt;
+    private bool _pressed;
+    private bool _dragging;
+    private bool _dragged;   // 今回の押下でドラッグしたか。離したときの Click を無視するため
+
     public TabItem()
     {
         Height = BaseHeight;
@@ -53,7 +64,8 @@ internal sealed class TabItem : Panel
             Cursor = Cursors.Hand,
         };
 
-        Click += (_, _) => Activated?.Invoke(this, EventArgs.Empty);
+        // WinForms は離したときに Click → MouseUp の順で呼ぶ。ドラッグした押下の Click は無視する。
+        Click += (_, _) => { if (!_dragged) Activated?.Invoke(this, EventArgs.Empty); };
         _close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         _close.MouseEnter += (_, _) => { _close.ForeColor = Theme.Text; };
         _close.MouseLeave += (_, _) => { _close.ForeColor = Theme.Muted; };
@@ -62,6 +74,54 @@ internal sealed class TabItem : Panel
         MouseLeave += (_, _) => { _hover = false; Invalidate(); };
 
         Controls.Add(_close);
+    }
+
+    // ---------------------------------------------------------------- ドラッグで並べ替え
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Button != MouseButtons.Left) return;
+        _pressed = true;
+        _dragging = false;
+        _dragged = false;
+        _downAt = e.Location;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (!_pressed || (e.Button & MouseButtons.Left) == 0) return;
+        if (!_dragging)
+        {
+            // 少し動いただけ（クリックの手ぶれ）ではドラッグにしない。
+            var slop = SystemInformation.DragSize;
+            if (Math.Abs(e.X - _downAt.X) < slop.Width && Math.Abs(e.Y - _downAt.Y) < slop.Height) return;
+            _dragging = true;
+            _dragged = true;
+            Activated?.Invoke(this, EventArgs.Empty);   // Chrome と同じく、つかんだタブを前面にする
+        }
+        DragMoved?.Invoke(this, PointToScreen(e.Location).X);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        EndDrag();
+    }
+
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        base.OnMouseCaptureChanged(e);
+        if (!Capture) EndDrag();   // Alt+Tab などでマウスを奪われた
+    }
+
+    private void EndDrag()
+    {
+        var was = _dragging;
+        _pressed = false;
+        _dragging = false;
+        if (was) DragEnded?.Invoke(this);
     }
 
     protected override void OnHandleCreated(EventArgs e)

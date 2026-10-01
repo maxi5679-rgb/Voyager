@@ -690,12 +690,45 @@ internal sealed class MainForm : Form
             var captured = tab;
             item.Activated += (_, _) => SelectTab(captured);
             item.CloseRequested += (_, _) => CloseTab(captured);
+            item.DragMoved += (_, screenX) => DragTab(captured, screenX);
+            item.DragEnded += _ => EndTabDrag(captured);
             tab.Item = item;
             _tabStrip.Controls.Add(item);
         }
         _tabStrip.ResumeLayout();
         LayoutTabs();
         UpdateChrome();
+    }
+
+    /// <summary>ドラッグを始めたときの位置（ログ用）。</summary>
+    private int _tabDragFrom = -1;
+
+    /// <summary>
+    /// ドラッグ中のタブを、マウスの位置に合わせてその場で並べ替える。
+    /// ほかのタブの真ん中を越えたら入れ替わる（Chrome と同じ）。
+    /// 作り直さずに並び順だけ動かすので、つかんでいるタブはそのままマウスを掴み続ける。
+    /// </summary>
+    private void DragTab(BrowserTab tab, int screenX)
+    {
+        if (tab.Item is null) return;
+        var current = _tabs.IndexOf(tab);
+        if (current < 0) return;
+        if (_tabDragFrom < 0) _tabDragFrom = current;
+
+        var x = _tabStrip.PointToClient(new Point(screenX, 0)).X;
+        var target = _tabs.Count(t => !ReferenceEquals(t, tab) && t.Item is not null && t.Item.Left + t.Item.Width / 2 < x);
+        if (target == current) return;
+
+        _tabs.RemoveAt(current);
+        _tabs.Insert(target, tab);
+        _tabStrip.Controls.SetChildIndex(tab.Item, target);
+    }
+
+    private void EndTabDrag(BrowserTab tab)
+    {
+        var to = _tabs.IndexOf(tab);
+        if (_tabDragFrom >= 0 && _tabDragFrom != to) Log.Write($"tabs: moved from {_tabDragFrom + 1} to {to + 1} of {_tabs.Count}");
+        _tabDragFrom = -1;
     }
 
     private void LayoutTabs()
