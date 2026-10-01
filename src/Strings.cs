@@ -312,8 +312,10 @@ internal static class Strings
           $"WebView2 keeps its own record of the pages you open. Entries older than {days} days are removed "
           + "every time Voyager starts; the button removes all of them. Logins and cookies are kept either way.");
     public static string ClearHistoryConfirm =>
-        T("閲覧履歴をすべて消します。ログイン状態と Cookie は残ります。\n\nよろしいですか？",
-          "This clears all browsing history. Logins and cookies are kept.\n\nContinue?");
+        T("閲覧履歴をすべて消します。ログイン状態と Cookie は残ります。\n"
+          + "開いているタブの「戻る」「進む」も使えなくなります。\n\nよろしいですか？",
+          "This clears all browsing history. Logins and cookies are kept.\n"
+          + "Open tabs also lose their back and forward history.\n\nContinue?");
     public static string HistoryCleared(DateTime at) =>
         T($"{at:HH:mm} に消しました。", $"Cleared at {at:HH:mm}.");
     public static string HistoryClearFailed(string detail) =>
