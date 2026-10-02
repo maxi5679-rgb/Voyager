@@ -182,8 +182,7 @@ Microsoft に送る情報は、Windows の診断データの設定と
 
 ## 残っている宿題
 
-- **コード署名**。未署名なので初回起動時に SmartScreen が出る。GitHub Actions で作ったリリースを、
-  SignPath Foundation で署名する予定
+- **コード署名**。未署名なので初回起動時に SmartScreen が出る
 - 履歴とダウンロード一覧
 
 ## ライセンス
@@ -217,18 +216,3 @@ About ページの画像は、星間空間に入るボイジャー1号の想像�
 このブラウザの名前としての「Voyager」と、Voyager のアイコンは、公式版の目印です。公式版とは、
 このリポジトリから GitHub Actions で作り、Releases ページで配っているものです。改造版を配るときは、
 別の名前とアイコンにしてください。「Voyager をもとにした」と書くのはかまいません。
-
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/)
-（コード署名は SignPath.io が無償で提供し、証明書は SignPath Foundation が発行しています。）
-
-- 開発者: maxi5679-rgb
-- レビュアー: maxi5679-rgb
-- コード署名の承認者: maxi5679-rgb
-
-This program will not transfer any information to other networked systems unless specifically
-requested by the user or the person installing or operating it.
-（利用者、またはインストール・操作する人がはっきり求めない限り、このプログラムはネットワーク上の他のシステムへ情報を送りません。）
-[プライバシー](README.ja.md#プライバシー)の節も参照してください。

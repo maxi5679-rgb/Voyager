@@ -190,8 +190,7 @@ itself reports to Microsoft follows your Windows diagnostic-data settings and th
 
 ## Still to do
 
-- **Code signing.** The build is unsigned, so SmartScreen warns on first run. The plan is to
-  sign releases built by GitHub Actions through SignPath Foundation
+- **Code signing.** The build is unsigned, so SmartScreen warns on first run
 - History and a downloads list
 
 ## License
@@ -227,16 +226,3 @@ The name "Voyager" for this browser and the Voyager icon mark the official build
 from this repository by its GitHub Actions workflow and published on its Releases page. If
 you distribute a modified version, please give it a different name and icon. Saying that it
 is based on Voyager is fine.
-
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/)
-
-- Developer: maxi5679-rgb
-- Reviewer: maxi5679-rgb
-- Code signing approver: maxi5679-rgb
-
-This program will not transfer any information to other networked systems unless specifically
-requested by the user or the person installing or operating it. See the
-[Privacy](README.md#privacy) section.
