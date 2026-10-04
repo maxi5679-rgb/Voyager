@@ -64,18 +64,16 @@ internal sealed class AppSettings
     /// <summary>LastTabs のうち、前面にあったタブの番号。</summary>
     public int LastActiveTab { get; set; }
 
+    /// <summary>設定とブックマークの置き場所（AppPaths を参照）。</summary>
     [JsonIgnore]
-    public static string Dir { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Voyager");
+    public static string Dir => AppPaths.Settings;
 
     [JsonIgnore]
     public static string FilePath { get; } = Path.Combine(Dir, "settings.json");
 
     /// <summary>Cookie とログイン状態はここに残る（更新しても消えない）。</summary>
     [JsonIgnore]
-    public static string UserDataDir { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Voyager", "WebView2");
+    public static string UserDataDir => AppPaths.WebView2;
 
     private static readonly JsonSerializerOptions Options = new()
     {

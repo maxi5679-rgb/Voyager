@@ -336,6 +336,7 @@ internal sealed class MainForm : Form
                 Language = BrowserLanguage(),
                 AllowSingleSignOnUsingOSPrimaryAccount = false,
             };
+            Log.Write($"package: {AppPaths.PackageFamilyName ?? "none (MSI)"}");
             Log.Write($"env create: userData={AppSettings.UserDataDir}");
             _env = await CoreWebView2Environment.CreateAsync(null, AppSettings.UserDataDir, options);
             Log.Write($"env ok: browser={_env.BrowserVersionString}");

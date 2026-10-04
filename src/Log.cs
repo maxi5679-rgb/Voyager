@@ -4,7 +4,8 @@ namespace Voyager;
 /// 起動時の診断ログ。環境変数 VOYAGER_DEBUG が設定されているか、
 /// debug.on がある場合だけ書き出す。
 ///
-/// debug.on とログはアプリのデータフォルダ（%LOCALAPPDATA%\Voyager）に置く。
+/// debug.on とログはアプリのデータフォルダ（MSI 版は %LOCALAPPDATA%\Voyager、
+/// MSIX 版はパッケージの LocalState。AppPaths.Local）に置く。
 /// インストール先に置くと、MSI が自分の管理外のファイルを消せないため、
 /// アンインストール後も Programs\Voyager フォルダが残ってしまう。
 ///
@@ -51,8 +52,7 @@ internal static class Log
     {
         try
         {
-            var dataDir = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Voyager");
+            var dataDir = AppPaths.Local;
 
             string? marker = null;
             foreach (var candidate in new[]
