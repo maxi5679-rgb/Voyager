@@ -111,8 +111,15 @@ Copy-Item (Join-Path $layout 'AppxManifest.xml') $priRoot
 $priConfig = Join-Path $work 'priconfig.xml'
 & $makepri createconfig /cf $priConfig /dq en-US /pv 10.0.0 /o | Out-Host
 Must ($LASTEXITCODE -eq 0) "makepri createconfig failed ($LASTEXITCODE)"
+# The default config splits scale-200 into resources.scale-200.pri, which only
+# makes sense for bundles with resource packs. One package, one resources.pri.
+[xml]$cfg = Get-Content $priConfig -Raw
+$cfg.SelectNodes('//packaging') | ForEach-Object { [void]$_.ParentNode.RemoveChild($_) }
+$cfg.Save($priConfig)
 & $makepri new /pr $priRoot /cf $priConfig /mn (Join-Path $priRoot 'AppxManifest.xml') /of (Join-Path $layout 'resources.pri') /o | Out-Host
 Must ($LASTEXITCODE -eq 0) "makepri new failed ($LASTEXITCODE)"
+$extraPri = Get-ChildItem $layout -Filter 'resources.*.pri'
+Must (-not $extraPri) "makepri split the resources: $($extraPri.Name -join ', ')"
 
 $msix = Join-Path $out "Voyager-$Version-x64.msix"
 & $makeappx pack /d $layout /p $msix /o | Out-Host
