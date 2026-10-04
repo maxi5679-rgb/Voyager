@@ -20,6 +20,8 @@ internal sealed class BookmarkSidebar : Panel
     private readonly TextBox _search;
     private readonly TreeView _tree;
     private readonly Label _count;
+    private readonly FlowLayoutPanel _tools;
+    private readonly Panel _gap;
 
     /// <summary>url, 新しいタブで開くか</summary>
     public event Action<string, bool>? OpenRequested;
@@ -101,7 +103,7 @@ internal sealed class BookmarkSidebar : Panel
             TextAlign = ContentAlignment.MiddleLeft,
         };
 
-        var tools = new FlowLayoutPanel
+        var tools = _tools = new FlowLayoutPanel
         {
             Dock = DockStyle.Bottom,
             Height = 34,
@@ -126,7 +128,7 @@ internal sealed class BookmarkSidebar : Panel
         Controls.Add(_tree);
         Controls.Add(_count);
         Controls.Add(tools);
-        Controls.Add(new Panel { Dock = DockStyle.Top, Height = 6, BackColor = Theme.Surface });
+        Controls.Add(_gap = new Panel { Dock = DockStyle.Top, Height = 6, BackColor = Theme.Surface });
         Controls.Add(_search);
 
         Reload();
@@ -181,7 +183,35 @@ internal sealed class BookmarkSidebar : Panel
         finally { _applying = false; }
         _appliedDpi = DeviceDpi;   // ここから先の Resize は利用者の操作とみなす
 
-        Log.Write($"sidebar dpi: {DeviceDpi} itemHeight={h} width={Width} (logical {_logicalWidth})");
+        ApplyDpiToFooter();
+
+        Log.Write($"sidebar dpi: {DeviceDpi} itemHeight={h} width={Width} (logical {_logicalWidth}) " +
+                  $"count={_count.Height} tools={_tools.Height}");
+    }
+
+    /// <summary>
+    /// 下の「全 N 件」とボタンの段。高さを 96 dpi の画素で決め打ちしていたので、
+    /// 拡大率の違うモニターへ移ると字だけ大きくなり、件数は隠れ、ボタンの字は上半分しか見えなくなった。
+    /// 余白も含めて換算し、さらに実際の字の高さを下回らないようにする
+    /// （字の大きさは WinForms が先に直しているので、測った値がそのまま使える）。
+    /// </summary>
+    private void ApplyDpiToFooter()
+    {
+        Padding = new Padding(ToDevice(8));
+        _gap.Height = ToDevice(6);
+
+        var countText = TextRenderer.MeasureText("全0件 Ag", _count.Font).Height;
+        _count.Height = Math.Max(ToDevice(18), countText + ToDevice(2));
+
+        var buttonHeight = ToDevice(26);
+        foreach (Control c in _tools.Controls)
+            buttonHeight = Math.Max(buttonHeight, TextRenderer.MeasureText("書き出し Ag", c.Font).Height + ToDevice(8));
+        foreach (Control c in _tools.Controls)
+        {
+            c.Height = buttonHeight;
+            c.Margin = new Padding(0, ToDevice(2), ToDevice(6), 0);
+        }
+        _tools.Height = buttonHeight + ToDevice(8);
     }
 
     /// <summary>96 dpi 基準の値を、いまの画面の画素数に直す。</summary>
