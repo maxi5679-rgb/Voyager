@@ -906,7 +906,11 @@ internal sealed class MainForm : Form
         var view = new WebView2
         {
             Dock = DockStyle.Fill,
-            DefaultBackgroundColor = Theme.Background,
+            // サイトの背景は Chrome と同じ白。ページが背景色を指定していない所はこの色で塗られる。
+            // 以前は内部ページと同じ暗い色にしていたが、Yahoo! JAPAN のように中央の記事だけに
+            // 色を付けるサイトでは左右に暗い帯が出て、広い画面ほど「2/3 しか表示されない」ように見えた。
+            // 内部ページ（_uiView）は暗いまま。
+            DefaultBackgroundColor = Color.White,
             Visible = false,
         };
         tab.View = view;
