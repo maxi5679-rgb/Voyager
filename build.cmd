@@ -11,14 +11,17 @@ rem --- Next build number. nextbuild.ps1 looks at the registry, the installed
 rem     exe, buildno.txt and the artifacts in this folder, and takes the highest
 rem     one it can find plus 1, so a cleanup of this folder can no longer make
 rem     the version go backwards.
+rem     LINE is the first two parts of the version. Each line counts on its
+rem     own, so changing it to a new line starts again at .0 (1.1.0).
+set "LINE=1.1"
 set BUILDNO=
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0nextbuild.ps1"`) do set BUILDNO=%%v
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0nextbuild.ps1" -Line %LINE%`) do set BUILDNO=%%v
 
 if "%BUILDNO%"=="" (
   echo [NG] could not determine the next build number > "%LOG%"
   goto :done
 )
-set "VER=1.0.%BUILDNO%"
+set "VER=%LINE%.%BUILDNO%"
 
 echo === Voyager build %VER% === > "%LOG%"
 powershell -NoProfile -Command ^
