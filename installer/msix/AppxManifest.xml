@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  MSIX manifest for the Microsoft Store build ("Voyager AI Browser").
+  ci/build.ps1 replaces __VERSION__ with <version>.0 and packs the publish output
+  together with Images\ and a resources.pri made from them.
+
+  Identity Name / Publisher / PublisherDisplayName are the values Partner Center
+  assigned to this product (Store ID 9NHXR8XMHG2M). They are not secrets.
+  The Store signs the package; this file never needs a certificate.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="K-SSystem.VoyagerAIBrowser"
+    Publisher="CN=D66C2216-096D-42A0-BCE5-3C741679D8A9"
+    Version="__VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Voyager AI Browser</DisplayName>
+    <PublisherDisplayName>K-S System</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- 1809: the oldest Windows 10 that WebView2 and packaged desktop apps both handle well. -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="ja-JP" />
+  </Resources>
+
+  <Applications>
+    <!-- An ordinary desktop app (WinForms + WebView2), not a UWP app: runFullTrust below. -->
+    <Application Id="Voyager" Executable="Voyager.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Voyager AI Browser"
+        Description="A small AI-first web browser that runs on the WebView2 already in Windows."
+        BackgroundColor="transparent"
+        Square150x150Logo="Images\Square150x150Logo.png"
+        Square44x44Logo="Images\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

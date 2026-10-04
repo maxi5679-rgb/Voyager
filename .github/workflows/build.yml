@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Builds both MSIs on a GitHub-hosted Windows runner.
+# Builds both MSIs, and the unsigned MSIX for the Microsoft Store, on a GitHub-hosted Windows runner.
 #
 #   push to main / pull request  -> version 0.0.<run number>, kept as an artifact for 14 days.
 #                                   Lower than any release, so it cannot replace an installed release.
 #   tag vX.Y.Z                   -> version X.Y.Z, and a DRAFT release with both MSIs and their
 #                                   SHA-256. Nothing is published until the draft is published by hand.
+#                                   The MSIX stays in the artifact only: it is unsigned (the Store signs
+#                                   what it publishes) and cannot be installed from the Releases page.
 name: Build
 
 on:
@@ -46,7 +48,7 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
           "Version: $v" >> $env:GITHUB_STEP_SUMMARY
 
-      - name: Build the MSIs
+      - name: Build the MSIs and the MSIX
         shell: pwsh
         run: ./ci/build.ps1 -Version ${{ steps.ver.outputs.version }} -OutDir out
 
@@ -84,7 +86,7 @@ jobs:
           cat > release-notes.md <<EOF
           Built by GitHub Actions from ${GITHUB_SHA::7}. Not signed yet. SHA-256 sums are in SHA256SUMS.txt.
           EOF
-          gh release create "$GITHUB_REF_NAME" out/* \
+          gh release create "$GITHUB_REF_NAME" out/*.msi out/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --draft \
             --title "Voyager ${{ needs.build.outputs.version }}" \
             --notes-file release-notes.md

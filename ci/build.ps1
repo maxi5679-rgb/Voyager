@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 <#
-  Voyager: build both MSIs without installing anything.
+  Voyager: build both MSIs and the Store MSIX without installing anything.
 
   This is the part of build.cmd that GitHub Actions can run: publish, stage and
   package. build.cmd keeps the rest (choosing the next number from what is
@@ -10,8 +10,10 @@
     pwsh ci/build.ps1 -Version 1.0.95
     pwsh ci/build.ps1 -Version 1.0.95 -OutDir out
 
-  Writes Voyager-<ver>-x64.msi (English) and Voyager-<ver>-x64-ja.msi
-  (Japanese) into -OutDir, and prints their size and SHA-256.
+  Writes Voyager-<ver>-x64.msi (English), Voyager-<ver>-x64-ja.msi (Japanese)
+  and Voyager-<ver>-x64.msix (unsigned, for the Microsoft Store) into -OutDir,
+  and prints their size and SHA-256. The MSIX step needs the Windows SDK
+  (makeappx / makepri), which GitHub's Windows runners have.
 #>
 param(
     [Parameter(Mandatory)] [ValidatePattern('^\d+\.\d+\.\d+$')] [string] $Version,
@@ -79,7 +81,46 @@ foreach ($p in @(@{ Lang = 1033; Name = "Voyager-$Version-x64.msi" },
 Get-ChildItem $out -Filter *.wixpdb | Remove-Item
 EndStep
 
-Get-ChildItem $out -Filter *.msi | ForEach-Object {
+Step "[4] msix $Version"
+# The Store build. Unsigned: Partner Center signs what it publishes, and an
+# unsigned MSIX cannot be installed by double-click, so it never goes on the
+# Releases page. Its data lives apart from the MSI build's (src/AppPaths.cs).
+$sdkBin = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -ErrorAction SilentlyContinue |
+          Where-Object { $_.Directory.Parent.Name -match '^\d+(\.\d+){3}$' } |
+          Sort-Object { [version]$_.Directory.Parent.Name } -Descending | Select-Object -First 1
+Must $sdkBin 'makeappx.exe not found (Windows SDK)'
+$makeappx = $sdkBin.FullName
+$makepri  = Join-Path $sdkBin.DirectoryName 'makepri.exe'
+Must (Test-Path $makepri) "makepri.exe not found next to $makeappx"
+Write-Host "sdk: $($sdkBin.DirectoryName)"
+
+$layout = Join-Path $work 'msix'
+Copy-Item $pub $layout -Recurse                     # Voyager.exe, .NET, WebView2Loader.dll, assets\
+# Images\, not Assets\: the publish output already has assets\voyager.jpg and
+# Windows paths ignore case.
+Copy-Item (Join-Path $root 'installer\msix\Images') (Join-Path $layout 'Images') -Recurse
+$manifest = (Get-Content (Join-Path $root 'installer\msix\AppxManifest.xml') -Raw).Replace('__VERSION__', "$Version.0")
+[IO.File]::WriteAllText((Join-Path $layout 'AppxManifest.xml'), $manifest, (New-Object Text.UTF8Encoding($false)))
+
+# resources.pri lets Windows pick Square44x44Logo.targetsize-24.png for the
+# taskbar and so on, instead of shrinking one picture. Index only the images.
+$priRoot = Join-Path $work 'pri'
+New-Item -ItemType Directory -Force $priRoot | Out-Null
+Copy-Item (Join-Path $layout 'Images') (Join-Path $priRoot 'Images') -Recurse
+Copy-Item (Join-Path $layout 'AppxManifest.xml') $priRoot
+$priConfig = Join-Path $work 'priconfig.xml'
+& $makepri createconfig /cf $priConfig /dq en-US /pv 10.0.0 /o | Out-Host
+Must ($LASTEXITCODE -eq 0) "makepri createconfig failed ($LASTEXITCODE)"
+& $makepri new /pr $priRoot /cf $priConfig /mn (Join-Path $priRoot 'AppxManifest.xml') /of (Join-Path $layout 'resources.pri') /o | Out-Host
+Must ($LASTEXITCODE -eq 0) "makepri new failed ($LASTEXITCODE)"
+
+$msix = Join-Path $out "Voyager-$Version-x64.msix"
+& $makeappx pack /d $layout /p $msix /o | Out-Host
+Must ($LASTEXITCODE -eq 0) "makeappx pack failed ($LASTEXITCODE)"
+Must (Test-Path $msix) 'makeappx reported success but wrote no MSIX'
+EndStep
+
+Get-ChildItem $out | Where-Object { $_.Extension -in '.msi', '.msix' } | ForEach-Object {
     $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     '{0}  {1}  ({2} MB)' -f $h, $_.Name, [math]::Round($_.Length / 1MB, 1)
 }
