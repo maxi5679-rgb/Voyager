@@ -176,6 +176,10 @@ internal sealed class MainForm : Form
         // FlowLayoutPanel を直接 Dock=Fill で置くと、右側のボタンにクリックが届かなくなる。
         var tabHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
         tabHost.Controls.Add(_tabStrip);
+        // タブ列の空いた所を右クリックすると「新しいタブ」。タブの上で押したときは
+        // TabItem が受け取るので、ここには来ない。
+        _tabStrip.MouseUp += OnTabStripMouseUp;
+        tabHost.MouseUp += OnTabStripMouseUp;
         // 並べる順番が配置順を決める。埋め尽くし(Fill)を先に Add し、端に寄せる方を後に Add する。
         // ここで BringToFront すると Fill 側がバー全体を占有し、右のボタンの下に潜り込む。
         _topBar.Controls.Add(tabHost);
@@ -1978,6 +1982,16 @@ internal sealed class MainForm : Form
 
         Log.Write("context menu: closed (page moved)");
         m.Close(ToolStripDropDownCloseReason.AppFocusChange);
+    }
+
+    private void OnTabStripMouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right) return;
+
+        var menu = DarkMenu.Create(DeviceDpi);
+        menu.Items.Add(DarkMenu.Item(Strings.NewTab, NewTab));
+        Log.Write("tab strip menu");
+        ShowMenuAtCursor(menu);
     }
 
     private static void Separator(ContextMenuStrip menu)
