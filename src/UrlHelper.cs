@@ -18,8 +18,8 @@ internal static partial class UrlHelper
 
         switch (t.ToLowerInvariant())
         {
-            case "google" or "ぐぐる" or "グーグル": return "https://www.google.co.jp/";
-            case "yahoo" or "ヤフー" or "やふー": return "https://www.yahoo.co.jp/";
+            case "google" or "ぐぐる" or "グーグル": return QuickSites.GoogleUrl;
+            case "yahoo" or "ヤフー" or "やふー": return QuickSites.YahooUrl;
             case "youtube" or "ようつべ" or "ユーチューブ": return "https://www.youtube.com/";
         }
 

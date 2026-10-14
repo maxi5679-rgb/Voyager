@@ -33,10 +33,14 @@ internal sealed record QuickSite(string Label, string Url);
 
 internal static class QuickSites
 {
-    public static readonly IReadOnlyList<QuickSite> All =
+    public static string GoogleUrl => Strings.Current == "en" ? "https://www.google.com/" : "https://www.google.co.jp/";
+    public static string YahooUrl => Strings.Current == "en" ? "https://www.yahoo.com/" : "https://www.yahoo.co.jp/";
+
+    // Resolve on each access so changing the UI language also changes built-in links.
+    public static IReadOnlyList<QuickSite> All =>
     [
-        new("Google",  "https://www.google.co.jp/"),
-        new("Yahoo!",  "https://www.yahoo.co.jp/"),
+        new("Google",  GoogleUrl),
+        new("Yahoo!",  YahooUrl),
         new("YouTube", "https://www.youtube.com/"),
     ];
 }

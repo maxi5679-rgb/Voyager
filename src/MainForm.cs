@@ -1171,7 +1171,7 @@ internal sealed class MainForm : Form
                 Navigate(_active, _engine.Home);
                 return;
             case "google":
-                Navigate(_active, "https://www.google.co.jp/");
+                Navigate(_active, QuickSites.GoogleUrl);
                 return;
             case "custom":
                 var url = UrlHelper.Parse(_settings.HomeUrl);

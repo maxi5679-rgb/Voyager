@@ -225,7 +225,7 @@ internal static class Pages
         [
             ("start",  Strings.HomeStart,  Strings.HomeStartHint),
             ("ai",     Strings.HomeAi,     Strings.HomeAiHint),
-            ("google", "Google",           "https://www.google.co.jp/"),
+            ("google", "Google",           QuickSites.GoogleUrl),
             ("custom", Strings.HomeCustom, Strings.HomeCustomHint),
         ];
 
@@ -249,7 +249,7 @@ internal static class Pages
 
         var customRow = s.HomeKind == "custom"
             ? $$"""
-                <input class="field" type="url" placeholder="https://www.google.co.jp/"
+                <input class="field" type="url" placeholder="{{QuickSites.GoogleUrl}}"
                        value="{{E(s.HomeUrl)}}" data-change='{"type":"setHomeUrl"}' />
                 """
             : "";
