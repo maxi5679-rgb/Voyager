@@ -1173,6 +1173,10 @@ internal sealed class MainForm : Form
         text = text.Trim();
         if (text.Length == 0) return;
 
+        // AI が未選択（AI 選択画面）のままだと、Render がページではなく選択画面を出し続ける。
+        // どの用途で送っても、ここで既定の AI を入れておく（用途を足す前からの動き）。
+        _engine ??= Engines.Default;
+
         var url = UrlHelper.Parse(text);
         if (url is not null)
         {
@@ -1200,7 +1204,6 @@ internal sealed class MainForm : Form
                 return;
 
             default:
-                _engine ??= Engines.Default;
                 Navigate(_active, _engine.Ask(text), focusPage: true);
                 return;
         }
@@ -1458,6 +1461,8 @@ internal sealed class MainForm : Form
                     _ => null,
                 };
                 if (openUrl is null) return;
+                // AI 選択画面から来るので _engine は空。空のままだと Render が選択画面に戻してしまう。
+                _engine ??= Engines.Default;
                 SetPurpose(openFor!);
                 Navigate(_active, openUrl);
                 return;
