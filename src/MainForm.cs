@@ -1448,6 +1448,20 @@ internal sealed class MainForm : Form
                 Render();
                 return;
 
+            case "openPurpose":
+                // AI 選択画面の「開く」。その用途に切り替えて、選んである先のサイトを開く。
+                var openFor = Str("purpose");
+                var openUrl = openFor switch
+                {
+                    Purposes.Search or Purposes.Image => Purposes.EngineFor(_settings, openFor).Home,
+                    Purposes.Video => Purposes.VideoFor(_settings).Url,
+                    _ => null,
+                };
+                if (openUrl is null) return;
+                SetPurpose(openFor!);
+                Navigate(_active, openUrl);
+                return;
+
             case "setPurposeAi":
                 var purpose = Str("purpose");
                 if (purpose is not (Purposes.Search or Purposes.Image or Purposes.Video)) return;

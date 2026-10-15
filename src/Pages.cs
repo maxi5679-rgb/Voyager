@@ -97,8 +97,9 @@ internal static class Pages
     /// <summary>
     /// 用途ごとの送り先を選ぶ欄。AI 選択画面と設定画面の両方に出す。
     /// 「ふだん」は上で選ぶ AI そのものなので、選ぶ欄は出さない。
+    /// withOpen なら、選んだ先をその場で開く「開く」ボタンも並べる（AI 選択画面用）。
     /// </summary>
-    private static string PurposeRows(AppSettings s)
+    private static string PurposeRows(AppSettings s, bool withOpen = false)
     {
         var purposeRows = new StringBuilder($$"""
             <div class="choice">
@@ -126,10 +127,14 @@ internal static class Pages
                 foreach (var e in Engines.All)
                     picks.Append($"<option value=\"{e.Id}\"{(e.Id == chosen ? " selected" : "")}>{E(e.Name)}</option>");
             }
+            var openButton = withOpen
+                ? $$"""<button class="field" style="width:auto;padding:8px 14px;margin-left:8px;cursor:pointer" data-msg='{"type":"openPurpose","purpose":"{{id}}"}'>{{E(Strings.Open)}}</button>"""
+                : "";
             purposeRows.Append($$"""
                 <div class="choice">
                   <div style="flex:1"><strong>{{E(Purposes.Label(id))}}</strong><br><small>{{E(hint)}}</small></div>
                   <select class="field" style="width:auto" data-change='{"type":"setPurposeAi","purpose":"{{id}}"}'>{{picks}}</select>
+                  {{openButton}}
                 </div>
                 """);
         }
@@ -157,7 +162,7 @@ internal static class Pages
               <p class="lead">{{E(Strings.PickerLead)}}</p>
               <div class="grid two">{{cards}}</div>
               <h2>{{E(Strings.PurposeHeading)}}</h2>
-              <div class="grid">{{PurposeRows(s)}}</div>
+              <div class="grid">{{PurposeRows(s, withOpen: true)}}</div>
               <p class="meta">{{E(Strings.VideoSignInNote)}}</p>
             </div>
             """, settingsOpen: false, hasEngine: false);
