@@ -611,7 +611,7 @@ internal sealed class MainForm : Form
                 LogHtml(_aboutOpen ? Pages.About(_env?.BrowserVersionString)
                         : _settingsOpen ? Pages.Settings(_settings, _engine, HistoryKeepDays, _historyNote)
                         : _active.Page == BookmarkManager.PageId ? Pages.Bookmarks()
-                        : _engine is null ? Pages.Picker()
+                        : _engine is null ? Pages.Picker(_settings)
                         : Pages.Start(_engine)));
         }
         else

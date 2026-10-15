@@ -298,6 +298,9 @@ internal static class Strings
     public static string PurposeSearchHint => T("出典つきで調べたいとき", "When you want answers with sources");
     public static string PurposeImageHint => T("「画像を作ってください」を添えて送ります", "Sent with “Create an image of” in front");
     public static string PurposeVideoHint => T("指示文をコピーしてサイトを開きます", "Copies your prompt and opens the site");
+    public static string VideoSignInNote =>
+        T("動画のサービスには、ログインや課金をしないと使えないサイトがあります。",
+          "Some video services only work after you sign in or pay.");
     public static string PurposeNote =>
         T("アドレス欄の左のボタンで用途を切り替えると、質問がここで決めた先に送られます。<br>"
           + "AI ごとに得意なこと、無料で使える量、ログインが要るかどうかが違い、同じ質問でも答えは変わります。"
