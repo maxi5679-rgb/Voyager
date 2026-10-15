@@ -29,6 +29,59 @@ internal static class Engines
     public static Engine Default => All[0];
 }
 
+/// <summary>
+/// 動画を作るサービス。どこも URL で指示文を受け取らないので、
+/// 指示文はクリップボードに入れておき、サイトを開くだけにする。
+/// </summary>
+internal sealed record VideoService(string Id, string Name, string Maker, string Url);
+
+internal static class VideoServices
+{
+    public static readonly IReadOnlyList<VideoService> All =
+    [
+        new("sora",   "Sora",        "OpenAI",   "https://sora.chatgpt.com/"),
+        new("flow",   "Google Flow", "Google",   "https://labs.google/fx/tools/flow"),
+        new("runway", "Runway",      "Runway",   "https://app.runwayml.com/"),
+        new("kling",  "Kling",       "Kuaishou", "https://app.klingai.com/global/"),
+    ];
+
+    public static VideoService? ById(string? id) =>
+        id is null ? null : All.FirstOrDefault(v => v.Id == id);
+
+    public static VideoService Default => All[0];
+}
+
+/// <summary>
+/// 質問の用途。アドレス欄の左のボタンで切り替える。
+/// 「ふだん」は今選んでいる AI に送り、ほかは設定画面で用途ごとに決めた先に送る。
+/// </summary>
+internal static class Purposes
+{
+    public const string Chat = "chat";
+    public const string Search = "search";
+    public const string Image = "image";
+    public const string Video = "video";
+
+    public static readonly string[] All = [Chat, Search, Image, Video];
+
+    public static string Label(string id) => id switch
+    {
+        Search => Strings.PurposeSearch,
+        Image => Strings.PurposeImage,
+        Video => Strings.PurposeVideo,
+        _ => Strings.PurposeChat,
+    };
+
+    /// <summary>調べもの・画像に割り当てた AI。決めていなければ（知らない id でも）既定の先。</summary>
+    public static Engine EngineFor(AppSettings s, string purpose) =>
+        Engines.ById(s.PurposeAi?.GetValueOrDefault(purpose))
+        ?? Engines.ById(purpose == Search ? "perplexity" : "chatgpt")
+        ?? Engines.Default;
+
+    public static VideoService VideoFor(AppSettings s) =>
+        VideoServices.ById(s.PurposeAi?.GetValueOrDefault(Video)) ?? VideoServices.Default;
+}
+
 internal sealed record QuickSite(string Label, string Url);
 
 internal static class QuickSites

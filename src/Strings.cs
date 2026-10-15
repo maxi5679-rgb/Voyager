@@ -278,6 +278,38 @@ internal static class Strings
     public static string RememberEngine => T("前回選んだ AI を覚えておく", "Remember the AI I chose last time");
     public static string ChooseAtStartup => T("起動時に選ぶ", "Ask at startup");
 
+    public static string PurposeChat => T("ふだん", "General");
+    public static string PurposeSearch => T("調べもの", "Research");
+    public static string PurposeImage => T("画像", "Image");
+    public static string PurposeVideo => T("動画", "Video");
+    public static string PurposeTip(string target) =>
+        T($"質問の用途を選ぶ（いまは {target} に送ります）", $"Choose what the question is for (now sent to {target})");
+    public static string PurposeMenuItem(string purpose, string target) =>
+        T($"{purpose}（{target}）", $"{purpose} ({target})");
+    public static string PurposeSettings => T("用途ごとの AI を設定する", "Set the AI for each use");
+    public static string ImagePrompt(string text) =>
+        T($"次の内容で画像を作ってください：{text}", $"Create an image of: {text}");
+    public static string VideoCopied(string name) =>
+        T($"指示文をコピーしました。{name} の入力欄に貼り付けてください（Ctrl+V）。",
+          $"Your prompt is on the clipboard. Paste it into {name}'s prompt box (Ctrl+V).");
+
+    public static string PurposeHeading => T("用途ごとの AI", "AI for each use");
+    public static string PurposeChatHint => T("上で選んでいる AI に送ります", "Goes to the AI chosen above");
+    public static string PurposeSearchHint => T("出典つきで調べたいとき", "When you want answers with sources");
+    public static string PurposeImageHint => T("「画像を作ってください」を添えて送ります", "Sent with “Create an image of” in front");
+    public static string PurposeVideoHint => T("指示文をコピーしてサイトを開きます", "Copies your prompt and opens the site");
+    public static string PurposeNote =>
+        T("アドレス欄の左のボタンで用途を切り替えると、質問がここで決めた先に送られます。<br>"
+          + "AI ごとに得意なこと、無料で使える量、ログインが要るかどうかが違い、同じ質問でも答えは変わります。"
+          + "画像や動画は、無料プランでは作れない、または回数に限りがあるサービスがほとんどです。<br>"
+          + "動画のサービスは URL で指示文を受け取れないので、Voyager が指示文をクリップボードにコピーしてからサイトを開きます。"
+          + "開いた先の入力欄に貼り付けてください。",
+          "Switch the use with the button left of the address bar, and your question goes where you set here.<br>"
+          + "Each AI has its own strengths, free limits and sign-in rules, so the same question can get different answers. "
+          + "Most services limit or charge for images and video on free plans.<br>"
+          + "Video services can't take a prompt through the address, so Voyager copies your prompt to the clipboard "
+          + "and opens the site. Paste it into the prompt box there.");
+
     public static string DownloadsHeading => T("ダウンロード", "Downloads");
     public static string SaveLocation => T("保存先", "Save to");
     public static string WindowsDefaultFolder => T("Windows の既定（ダウンロード フォルダー）",

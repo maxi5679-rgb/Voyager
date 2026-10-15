@@ -40,6 +40,15 @@ internal sealed class MainForm : Form
     private Button _back = null!, _fwd = null!, _reload = null!, _home = null!, _engineBtn = null!, _settingsBtn = null!;
     private Button _star = null!, _bmBtn = null!, _newTabBtn = null!;
 
+    /// <summary>アドレス欄の左の用途ボタン。押すと用途の一覧が出る。</summary>
+    private Button _purposeBtn = null!;
+
+    /// <summary>いまの用途（Purposes の id）。保存はせず、起動するたびに「ふだん」から始める。</summary>
+    private string _purpose = Purposes.Chat;
+
+    /// <summary>「コピーしました」のような一言を、アドレス欄の下に少しのあいだ出す。</summary>
+    private readonly ToolTip _notice = new();
+
     /// <summary>吹き出しは 1 つを使い回す。言語を切り替えたときに差し替えるため。</summary>
     private readonly ToolTip _tips = new();
 
@@ -248,6 +257,12 @@ internal sealed class MainForm : Form
             Submit(_omni.Text);
         };
         omniHost.Controls.Add(_omni);
+
+        // 用途ボタンはアドレス欄の左。Fill の後に Add したものほど外側（左端）に寄る。
+        _purposeBtn = TextButton(Purposes.Label(_purpose), "", (_, _) => ShowPurposeMenu());
+        _purposeBtn.Dock = DockStyle.Left;
+        omniHost.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 6, BackColor = Theme.Surface });
+        omniHost.Controls.Add(_purposeBtn);
 
         // 同上。BringToFront するとアドレス欄が左端から始まり、URL の先頭がボタンの下に隠れる。
         _navBar.Controls.Add(omniHost);
@@ -635,6 +650,7 @@ internal sealed class MainForm : Form
     private void UpdateChrome()
     {
         _engineBtn.Text = _engine?.Name ?? Strings.PickAi;
+        UpdatePurposeButton();
         _settingsBtn.ForeColor = _settingsOpen ? Theme.Accent : Theme.Text;
 
         // 利用者が打ち込んでいる最中だけ自動更新を止める（フォーカスの有無では判定しない。
@@ -1157,9 +1173,87 @@ internal sealed class MainForm : Form
         text = text.Trim();
         if (text.Length == 0) return;
 
-        _engine ??= Engines.Default;
         var url = UrlHelper.Parse(text);
-        Navigate(_active, url ?? _engine.Ask(text), focusPage: true);
+        if (url is not null)
+        {
+            Navigate(_active, url, focusPage: true);
+            return;
+        }
+
+        switch (_purpose)
+        {
+            case Purposes.Search:
+                Navigate(_active, Purposes.EngineFor(_settings, Purposes.Search).Ask(text), focusPage: true);
+                return;
+
+            case Purposes.Image:
+                Navigate(_active, Purposes.EngineFor(_settings, Purposes.Image).Ask(Strings.ImagePrompt(text)), focusPage: true);
+                return;
+
+            case Purposes.Video:
+                // 動画のサービスは URL で指示文を受け取らない。コピーしておいて、開いた先で貼ってもらう。
+                var video = Purposes.VideoFor(_settings);
+                SetClipboard(text);
+                Navigate(_active, video.Url, focusPage: true);
+                ShowNotice(Strings.VideoCopied(video.Name));
+                Log.Write($"purpose video: copied {text.Length} chars, open {video.Id}");
+                return;
+
+            default:
+                _engine ??= Engines.Default;
+                Navigate(_active, _engine.Ask(text), focusPage: true);
+                return;
+        }
+    }
+
+    /// <summary>その用途で質問を送る先の名前。メニューと吹き出しに出す。</summary>
+    private string PurposeTarget(string purpose) => purpose switch
+    {
+        Purposes.Search or Purposes.Image => Purposes.EngineFor(_settings, purpose).Name,
+        Purposes.Video => Purposes.VideoFor(_settings).Name,
+        _ => (_engine ?? Engines.Default).Name,
+    };
+
+    private void UpdatePurposeButton()
+    {
+        _purposeBtn.Text = Purposes.Label(_purpose);
+        // 「ふだん」以外のときは色を変える。動画のまま忘れて普通の質問を打つのを防ぐ。
+        _purposeBtn.ForeColor = _purpose == Purposes.Chat ? Theme.Text : Theme.Accent;
+        _tips.SetToolTip(_purposeBtn, Strings.PurposeTip(PurposeTarget(_purpose)));
+    }
+
+    private void ShowPurposeMenu()
+    {
+        var menu = DarkMenu.Create(DeviceDpi);
+        foreach (var id in Purposes.All)
+        {
+            var p = id;
+            var item = DarkMenu.Item(Strings.PurposeMenuItem(Purposes.Label(p), PurposeTarget(p)), () => SetPurpose(p));
+            if (p == _purpose) item.Font = new Font(menu.Font, FontStyle.Bold);
+            menu.Items.Add(item);
+        }
+        Separator(menu);
+        menu.Items.Add(DarkMenu.Item(Strings.PurposeSettings, () => { if (!_settingsOpen) ToggleSettings(); }));
+
+        CloseMenu();
+        _menu = menu;
+        menu.Closed += (_, _) => { if (ReferenceEquals(_menu, menu)) _menu = null; };
+        menu.Show(_purposeBtn, new Point(0, _purposeBtn.Height));
+    }
+
+    private void SetPurpose(string purpose)
+    {
+        _purpose = purpose;
+        UpdatePurposeButton();
+        Log.Write($"purpose: {purpose}");
+        // 選んだらすぐ打てるように。
+        _omni.Focus();
+    }
+
+    private void ShowNotice(string text)
+    {
+        if (!IsHandleCreated || IsDisposed) return;
+        _notice.Show(text, _omni, 0, _omni.Height + 4, 6000);
     }
 
     private void GoHome()
@@ -1352,6 +1446,20 @@ internal sealed class MainForm : Form
                 Strings.Use(_settings.Language);
                 ApplyStrings();
                 Render();
+                return;
+
+            case "setPurposeAi":
+                var purpose = Str("purpose");
+                if (purpose is not (Purposes.Search or Purposes.Image or Purposes.Video)) return;
+                var target = Str("value");
+                var known = purpose == Purposes.Video
+                    ? VideoServices.ById(target) is not null
+                    : Engines.ById(target) is not null;
+                if (!known) return;
+                _settings.PurposeAi ??= new();
+                _settings.PurposeAi[purpose] = target!;
+                _settings.Save();
+                UpdatePurposeButton();
                 return;
 
             case "setEngine":
