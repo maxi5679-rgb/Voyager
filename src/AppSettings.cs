@@ -12,6 +12,13 @@ internal sealed class AppSettings
     public string HomeUrl { get; set; } = "";
     public bool RememberEngine { get; set; } = true;
     public string? EngineId { get; set; }
+
+    /// <summary>
+    /// 用途ごとの送り先。キーは Purposes の id（search / image / video）、値は AI か動画サービスの id。
+    /// 無いキーは既定の先（調べもの = Perplexity、画像 = ChatGPT、動画 = Sora）になる。
+    /// </summary>
+    public Dictionary<string, string> PurposeAi { get; set; } = new();
+
     public int WindowWidth { get; set; } = 1320;
     public int WindowHeight { get; set; } = 860;
     public bool Maximized { get; set; }
