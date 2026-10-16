@@ -878,6 +878,75 @@ internal sealed class MainForm : Form
         Navigate(tab, url);
     }
 
+    /// <summary>
+    /// ページが window.open で開いた小窓（主にログイン）を、別の窓として開く。
+    /// 同じ環境（Cookie・ログイン状態）を使い、a.NewWindow に渡すことで opener のつながりを保つ。
+    /// 小窓の中からさらに開かれるものは、普通にタブで開く。
+    /// </summary>
+    private async void OpenPopup(CoreWebView2NewWindowRequestedEventArgs a)
+    {
+        var deferral = a.GetDeferral();
+        Form? popup = null;
+        try
+        {
+            var f = a.WindowFeatures;
+            var area = Screen.FromControl(this).WorkingArea;
+            var size = new Size(
+                Math.Clamp(Scale((int)f.Width), Scale(360), area.Width),
+                Math.Clamp(Scale((int)f.Height), Scale(320), area.Height));
+
+            var view = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Theme.Background };
+            popup = new Form
+            {
+                Text = App.Name,
+                Icon = Icon,
+                BackColor = Theme.Background,
+                StartPosition = FormStartPosition.Manual,
+                Owner = this,
+            };
+            popup.ClientSize = size;
+            popup.Location = new Point(
+                Math.Max(area.Left, Left + (Width - popup.Width) / 2),
+                Math.Max(area.Top, Top + (Height - popup.Height) / 2));
+            popup.Controls.Add(view);
+            popup.Show();
+
+            await view.EnsureCoreWebView2Async(_env);
+            var core = view.CoreWebView2;
+            core.Settings.AreDevToolsEnabled = false;
+            core.Settings.IsWebMessageEnabled = false;
+            core.Settings.AreHostObjectsAllowed = false;
+            core.Settings.IsPasswordAutosaveEnabled = true;
+            core.Settings.IsGeneralAutofillEnabled = true;
+
+            var win = popup;
+            core.DocumentTitleChanged += (_, _) => win.Text = string.IsNullOrWhiteSpace(core.DocumentTitle) ? App.Name : core.DocumentTitle;
+            core.WindowCloseRequested += (_, _) => win.Close();
+            core.NewWindowRequested += (_, b) => { b.Handled = true; OpenInNewTab(b.Uri); };
+            core.NavigationStarting += (_, b) =>
+            {
+                // 小窓は最初 about:blank で開くことがある。それ以外は http / https だけ。
+                if (b.Uri != "about:blank" && !UrlHelper.IsNavigable(b.Uri)) b.Cancel = true;
+            };
+
+            a.NewWindow = core;
+            a.Handled = true;
+            Log.Write($"popup: {Log.Url(a.Uri)} {f.Width}x{f.Height}");
+        }
+        catch (Exception ex)
+        {
+            // 小窓が作れなければ、これまでどおりタブで開く。
+            Log.Write($"!! popup failed: {ex.GetType().Name} {ex.Message}");
+            popup?.Close();
+            a.Handled = true;
+            OpenInNewTab(a.Uri);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
     // ---------------------------------------------------------------- ナビゲーション
 
     /// <param name="focusPage">開いたあと、ページにフォーカスを移す（アドレス欄から開いたとき）。</param>
@@ -993,6 +1062,14 @@ internal sealed class MainForm : Form
         };
         core.NewWindowRequested += (_, a) =>
         {
+            // 「Google でログイン」のような小窓は、開いた側と window.opener でつながっていないと動かない。
+            // タブで開くと "This page must be opened as a popup." と出て先へ進めない。
+            // 大きさを指定した window.open は、本物の小窓として開く。
+            if (a.WindowFeatures.HasSize)
+            {
+                OpenPopup(a);
+                return;
+            }
             a.Handled = true;
             OpenInNewTab(a.Uri);
         };
