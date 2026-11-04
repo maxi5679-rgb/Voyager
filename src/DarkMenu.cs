@@ -174,6 +174,12 @@ internal static class MenuWheel
         typeof(ToolStripDropDownMenu).GetMethod("ScrollInternal",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
             [typeof(bool)]);
+    // 何行ぶんでも 1 回で動かす版。ScrollInternal(bool) は 1 行ごとに全項目を動かし直すので、
+    // 243 件のフォルダで 1 目盛り 6 行だと 1,500 回近く項目を置き直すことになる。
+    private static readonly System.Reflection.MethodInfo? ScrollBy =
+        typeof(ToolStripDropDownMenu).GetMethod("ScrollInternal",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            [typeof(int)]);
     // 送った後に矢印の押せる・押せないを描き直す。無くても送ることはできる。
     private static readonly System.Reflection.MethodInfo? RefreshArrows =
         typeof(ToolStripDropDownMenu).GetMethod("UpdateScrollButtonStatus",
@@ -185,6 +191,8 @@ internal static class MenuWheel
     private static uint _threadId;        // フックのスレッド。0 ならまだ起こしていない
     private static bool _wantOn;          // UI スレッド専用。最後に頼んだ状態
     private static int _pending;          // UI スレッド専用。1 目盛り（120）に満たない細かい送りを貯める
+    private static int _queued;           // フックのスレッドが貯め、UI スレッドがまとめて取る回転量
+    private static int _posted;           // UI スレッドへの依頼が出たまま、まだ処理されていなければ 1
 
     public static void Enable(ToolStripDropDown dropDown)
     {
@@ -216,7 +224,7 @@ internal static class MenuWheel
         var want = _snapshot.Length > 0;
         if (want == _wantOn) return;
         _wantOn = want;
-        if (want) _pending = 0;
+        if (want) { _pending = 0; _queued = 0; }
         if (_threadId == 0)
         {
             if (!want) return;
@@ -282,14 +290,20 @@ internal static class MenuWheel
             {
                 if (!open[i].Bounds.Contains(at)) continue;
                 var menu = open[i].Menu;
-                var delta = (int)(short)(info.MouseData >> 16);
-                try
+                // ホイールを速く回すと 1ms おきに届く。1 回ずつ UI スレッドへ頼むと処理が追いつかず
+                // 溜まっていくので、回転量を足し込み、依頼は処理待ちが無いときだけ出す。
+                Interlocked.Add(ref _queued, (short)(info.MouseData >> 16));
+                if (Interlocked.Exchange(ref _posted, 1) == 0)
                 {
-                    menu.BeginInvoke(() => Handle(menu, delta));
-                }
-                catch (InvalidOperationException)
-                {
-                    break;   // ちょうど閉じて窓が無くなった
+                    try
+                    {
+                        menu.BeginInvoke(() => Handle(menu));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        _posted = 0;
+                        break;   // ちょうど閉じて窓が無くなった
+                    }
                 }
                 return (IntPtr)1;   // メニューの上で回したホイールは下のページへ流さない
             }
@@ -298,35 +312,46 @@ internal static class MenuWheel
         return CallNextHookEx(_hook, code, wParam, lParam);
     }
 
-    /// <summary>UI スレッドで、メニューを送る。</summary>
-    private static void Handle(ToolStripDropDownMenu target, int delta)
+    /// <summary>UI スレッドで、溜まった回転量ぶんメニューを送る。</summary>
+    private static void Handle(ToolStripDropDownMenu target)
     {
+        Interlocked.Exchange(ref _posted, 0);
+        var delta = Interlocked.Exchange(ref _queued, 0);
         if (target.IsDisposed || !target.Visible) return;
 
         _pending += delta;
         var notches = _pending / 120;
         _pending %= 120;
+        if (notches == 0) return;
         var lines = SystemInformation.MouseWheelScrollLines;
         var steps = notches * (lines <= 0 ? 3 : Math.Min(lines, 10));
-        var moved = 0;
-        for (var n = 0; n < Math.Abs(steps); n++)
+        var up = steps > 0;
+
+        if (ScrollBy is not null && Range(target) is (var first, var last))
         {
-            var up = steps > 0;
-            if (!CanScroll(target, up)) break;
-            Scroll!.Invoke(target, [up]);
-            moved++;
+            // 動かせる量で頭を打ち、全項目を 1 回だけ置き直す。正の値で下へ送る（項目が上へ動く）。
+            var area = target.DisplayRectangle;
+            var want = Math.Abs(steps) * first.Height;
+            var pixels = up
+                ? -Math.Min(want, area.Top - first.Bounds.Top)
+                : Math.Min(want, last.Bounds.Bottom - area.Bottom);
+            if (pixels == 0 || (up ? pixels > 0 : pixels < 0)) return;
+            ScrollBy.Invoke(target, [pixels]);
         }
-        if (moved > 0)
+        else
         {
-            RefreshArrows?.Invoke(target, null);
-            target.Invalidate();
+            var moved = 0;
+            for (var n = 0; n < Math.Abs(steps) && CanScroll(target, up); n++, moved++)
+                Scroll!.Invoke(target, [up]);
+            if (moved == 0) return;
         }
+        RefreshArrows?.Invoke(target, null);
+        target.Invalidate();
     }
 
-    /// <summary>まだ隠れている項目がその向きにあるか。送り矢印が押せるかどうかと同じ判定。</summary>
-    private static bool CanScroll(ToolStripDropDownMenu menu, bool up)
+    /// <summary>表示している最初と最後の項目。</summary>
+    private static (ToolStripItem First, ToolStripItem Last)? Range(ToolStripDropDownMenu menu)
     {
-        var area = menu.DisplayRectangle;
         ToolStripItem? first = null, last = null;
         foreach (ToolStripItem item in menu.Items)
         {
@@ -334,7 +359,14 @@ internal static class MenuWheel
             first ??= item;
             last = item;
         }
-        if (first is null || last is null) return false;
+        return first is null || last is null ? null : (first, last);
+    }
+
+    /// <summary>まだ隠れている項目がその向きにあるか。送り矢印が押せるかどうかと同じ判定。</summary>
+    private static bool CanScroll(ToolStripDropDownMenu menu, bool up)
+    {
+        if (Range(menu) is not (var first, var last)) return false;
+        var area = menu.DisplayRectangle;
         return up ? first.Bounds.Top < area.Top : last.Bounds.Bottom > area.Bottom;
     }
 }
