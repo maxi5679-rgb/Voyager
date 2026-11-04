@@ -135,6 +135,7 @@ internal static class MenuWheel
         {
             _installed = true;
             Application.AddMessageFilter(new Filter());
+            Log.Write("menu wheel: on");
         }
     }
 
@@ -154,19 +155,26 @@ internal static class MenuWheel
                 target = menu;
                 break;
             }
-            if (target is null) return false;
+            if (target is null)
+            {
+                Log.Write($"menu wheel: no menu under cursor (open={Menus.Count} at={at})");
+                return false;
+            }
 
             _pending += (short)((long)m.WParam >> 16 & 0xFFFF);
             var notches = _pending / 120;
             _pending %= 120;
             var lines = SystemInformation.MouseWheelScrollLines;
             var steps = notches * (lines <= 0 ? 3 : Math.Min(lines, 10));
+            var moved = 0;
             for (var n = 0; n < Math.Abs(steps); n++)
             {
                 var up = steps > 0;
                 if (!CanScroll(target, up)) break;
                 Scroll!.Invoke(target, [up]);
+                moved++;
             }
+            Log.Write($"menu wheel: items={target.Items.Count} steps={steps} moved={moved}");
             if (steps != 0) RefreshArrows?.Invoke(target, null);
             // 送れなくても、メニューの上で回したホイールは下のページへ流さない。
             return true;
