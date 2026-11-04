@@ -215,11 +215,8 @@ internal static class MenuWheel
             target = menu;
             break;
         }
-        if (target is null)
-        {
-            Log.Write($"menu wheel: no menu under cursor (open={Menus.Count} at={at})");
-            return false;
-        }
+        // メニューの外（別の画面も含む）で回したホイールは、そのまま下の窓へ流す。
+        if (target is null) return false;
 
         _pending += delta;
         var notches = _pending / 120;
@@ -239,7 +236,6 @@ internal static class MenuWheel
             RefreshArrows?.Invoke(target, null);
             target.Invalidate();
         }
-        Log.Write($"menu wheel: items={target.Items.Count} steps={steps} moved={moved}");
         // 送れなくても、メニューの上で回したホイールは下のページへ流さない。
         return true;
     }
