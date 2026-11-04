@@ -335,6 +335,7 @@ internal sealed class BookmarkBar : Panel
         // 行数でも頭を打ち、あふれた分はメニュー側でスクロールさせる。
         var (cap, rowHeight, screenCap, rowCap) = MenuCap(area);
         menu.MaximumSize = new Size(0, cap);
+        MenuWheel.Enable(menu);
 
         var size = menu.GetPreferredSize(Size.Empty);
         Log.Write($"folder menu: dpi={DeviceDpi} items={menu.Items.Count} row={rowHeight} " +
@@ -376,6 +377,7 @@ internal sealed class BookmarkBar : Panel
             sub.DropDown.MaximumSize = new Size(0, MenuCap(Screen.FromControl(this).WorkingArea).cap);
             sub.DropDown.ResumeLayout();
             if (sub.DropDown is ToolStripDropDownMenu dd) dd.ShowItemToolTips = true;
+            MenuWheel.Enable(sub.DropDown);
             KeepOnSameScreen(sub);
             Log.Write($"folder submenu: items={children.Count} built in {Environment.TickCount64 - t}ms");
             shownFrom = Environment.TickCount64;
