@@ -94,17 +94,24 @@ internal static class DarkMenu
 /// ホイールには一切反応しない（ToolStrip 側にホイールの処理が無い）。項目の多いフォルダで
 /// 矢印の上に止めておく以外に送る手段が無く、「スクロールが効かない」ように見えていた。
 ///
-/// 最初はアプリのメッセージフィルターで WM_MOUSEWHEEL を拾ったが、1.1.12 では動かなかった。
 /// メニューはフォーカスを取らないので、ホイールはフォーカスのあるページ（WebView2。別プロセスの窓）
-/// へ送られ、こちらのメッセージループには来ない。そこで、メニューが開いている間だけ
-/// 低レベルのマウスフック（WH_MOUSE_LL）を張り、どの窓へ送られるかの前に横取りする。
-/// カーソルの下に開いたメニューがあればそれを送り、ホイールはページへ流さない。
-/// 送る処理は矢印を押したときと同じ内部の ScrollInternal(bool) を使う。
+/// へ送られ、アプリのメッセージフィルターには来ない（1.1.12 で確認）。そこで、メニューが
+/// 開いている間だけ低レベルのマウスフック（WH_MOUSE_LL）を張って横取りする。
+///
+/// フックは専用のスレッドで受ける。1.1.13 では UI スレッドで受けていたため、メニューが開いている間は
+/// パソコン全体のマウスの動きが 1 つ残らず UI スレッドを通り、UI スレッドが 243 件のフォルダを
+/// 組み立てている（0.8 秒）ような間はマウスごと固まって、ひどく重くなった。
+/// 専用スレッドは開いているメニューの枠と見比べるだけで、何も待たない。
+/// 枠の中で回したホイールだけを、矢印と同じ内部の ScrollInternal(bool) で送るよう UI スレッドへ頼む。
 /// </summary>
 internal static class MenuWheel
 {
     private const int WH_MOUSE_LL = 14;
     private const int WM_MOUSEWHEEL = 0x020A;
+    private const int WM_QUIT = 0x0012;
+    private const uint WM_HOOK_ON = 0x8001;    // WM_APP + 1
+    private const uint WM_HOOK_OFF = 0x8002;
+    private const uint PM_NOREMOVE = 0;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MSLLHOOKSTRUCT
@@ -115,6 +122,19 @@ internal static class MenuWheel
         public uint Flags;
         public uint Time;
         public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr Hwnd;
+        public uint Message;
+        public IntPtr WParam;
+        public IntPtr LParam;
+        public uint Time;
+        public int X;
+        public int Y;
+        public uint Private;
     }
 
     private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
@@ -128,11 +148,27 @@ internal static class MenuWheel
     [DllImport("user32.dll")]
     private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(out MSG msg, IntPtr hwnd, uint min, uint max);
+
+    [DllImport("user32.dll")]
+    private static extern bool PeekMessage(out MSG msg, IntPtr hwnd, uint min, uint max, uint remove);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostThreadMessage(uint threadId, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandle(string? name);
 
-    // いま開いているメニューだけを持つ。閉じたものは外すので、作り捨てのメニューが溜まらない。
+    /// <summary>開いているメニューと、その画面上の枠。UI スレッドが丸ごと差し替え、フックのスレッドは読むだけ。</summary>
+    private sealed record Open(ToolStripDropDownMenu Menu, Rectangle Bounds);
+
+    // いま開いているメニューだけを持つ（UI スレッド専用）。閉じたものは外すので、作り捨てのメニューが溜まらない。
     private static readonly List<ToolStripDropDownMenu> Menus = [];
+    private static volatile Open[] _snapshot = [];
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ToolStripDropDownMenu, object> Hooked = new();
     private static readonly System.Reflection.MethodInfo? Scroll =
         typeof(ToolStripDropDownMenu).GetMethod("ScrollInternal",
@@ -145,8 +181,10 @@ internal static class MenuWheel
             Type.EmptyTypes);
     // フックに渡したデリゲートは GC に回収されないよう、ずっと持っておく。
     private static readonly HookProc Proc = OnMouse;
-    private static IntPtr _hook;
-    private static int _pending;   // 1 目盛り（120）に満たないタッチパッドの細かい送りを貯める
+    private static IntPtr _hook;          // フックのスレッド専用
+    private static uint _threadId;        // フックのスレッド。0 ならまだ起こしていない
+    private static bool _wantOn;          // UI スレッド専用。最後に頼んだ状態
+    private static int _pending;          // UI スレッド専用。1 目盛り（120）に満たない細かい送りを貯める
 
     public static void Enable(ToolStripDropDown dropDown)
     {
@@ -163,60 +201,107 @@ internal static class MenuWheel
             if (menu.Visible) Menus.Add(menu);
             Update();
         };
+        menu.LocationChanged += (_, _) => Update();
+        menu.SizeChanged += (_, _) => Update();
         menu.Disposed += (_, _) => { Menus.Remove(menu); Update(); };
         if (menu.Visible) { Menus.Add(menu); Update(); }
     }
 
-    /// <summary>メニューが 1 枚でも開いていればフックを張り、全部閉じたら外す。</summary>
+    /// <summary>枠の一覧を差し替え、メニューが 1 枚でも開いていればフックを張り、全部閉じたら外すよう頼む。</summary>
     private static void Update()
     {
-        if (Menus.Count > 0 && _hook == IntPtr.Zero)
+        _snapshot = Menus.Where(m => !m.IsDisposed && m.Visible)
+                         .Select(m => new Open(m, m.Bounds)).ToArray();
+
+        var want = _snapshot.Length > 0;
+        if (want == _wantOn) return;
+        _wantOn = want;
+        if (want) _pending = 0;
+        if (_threadId == 0)
         {
-            _pending = 0;
-            _hook = SetWindowsHookEx(WH_MOUSE_LL, Proc, GetModuleHandle(null), 0);
-            if (_hook == IntPtr.Zero)
-                Log.Write($"menu wheel: hook failed (error {Marshal.GetLastWin32Error()})");
-            else
-                Log.Write("menu wheel: on");
+            if (!want) return;
+            StartThread();
         }
-        else if (Menus.Count == 0 && _hook != IntPtr.Zero)
+        PostThreadMessage(_threadId, want ? WM_HOOK_ON : WM_HOOK_OFF, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private static void StartThread()
+    {
+        using var ready = new ManualResetEventSlim();
+        var thread = new Thread(() =>
         {
-            UnhookWindowsHookEx(_hook);
-            _hook = IntPtr.Zero;
+            // メッセージの受け口を先に作っておかないと、最初の PostThreadMessage が落ちる。
+            PeekMessage(out _, IntPtr.Zero, 0, 0, PM_NOREMOVE);
+            _threadId = GetCurrentThreadId();
+            ready.Set();
+            Loop();
+        })
+        {
+            IsBackground = true,
+            Name = "Voyager menu wheel",
+            Priority = ThreadPriority.AboveNormal,
+        };
+        thread.Start();
+        ready.Wait();
+    }
+
+    /// <summary>フックのスレッド。フックの呼び出しはここで GetMessage している間に届く。</summary>
+    private static void Loop()
+    {
+        while (GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
+        {
+            if (msg.Message == WM_HOOK_ON && _hook == IntPtr.Zero)
+            {
+                _hook = SetWindowsHookEx(WH_MOUSE_LL, Proc, GetModuleHandle(null), 0);
+                Log.Write(_hook == IntPtr.Zero
+                    ? $"menu wheel: hook failed (error {Marshal.GetLastWin32Error()})"
+                    : "menu wheel: on");
+            }
+            else if (msg.Message == WM_HOOK_OFF && _hook != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_hook);
+                _hook = IntPtr.Zero;
+            }
+            else if (msg.Message == WM_QUIT)
+            {
+                break;
+            }
         }
     }
 
+    /// <summary>フックのスレッドで呼ばれる。ここでは待たない。枠と見比べて、UI スレッドへ頼むだけ。</summary>
     private static IntPtr OnMouse(int code, IntPtr wParam, IntPtr lParam)
     {
         if (code >= 0 && (int)wParam == WM_MOUSEWHEEL)
         {
-            try
+            var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+            var at = new Point(info.X, info.Y);
+            var open = _snapshot;
+            // 後から開いた子のメニューほど上に重なっているので、後ろから探す。
+            for (var i = open.Length - 1; i >= 0; i--)
             {
-                var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-                if (Handle(new Point(info.X, info.Y), (short)(info.MouseData >> 16)))
-                    return (IntPtr)1;   // 送ったのでページへは流さない
-            }
-            catch (Exception ex)
-            {
-                Log.Write($"menu wheel: {ex.GetType().Name}: {ex.Message}");
+                if (!open[i].Bounds.Contains(at)) continue;
+                var menu = open[i].Menu;
+                var delta = (int)(short)(info.MouseData >> 16);
+                try
+                {
+                    menu.BeginInvoke(() => Handle(menu, delta));
+                }
+                catch (InvalidOperationException)
+                {
+                    break;   // ちょうど閉じて窓が無くなった
+                }
+                return (IntPtr)1;   // メニューの上で回したホイールは下のページへ流さない
             }
         }
+        // メニューの外（別の画面も含む）で回したホイールと、マウスの他の動きは、そのまま流す。
         return CallNextHookEx(_hook, code, wParam, lParam);
     }
 
-    private static bool Handle(Point at, int delta)
+    /// <summary>UI スレッドで、メニューを送る。</summary>
+    private static void Handle(ToolStripDropDownMenu target, int delta)
     {
-        // 後から開いた子のメニューほど上に重なっているので、後ろから探す。
-        ToolStripDropDownMenu? target = null;
-        for (var i = Menus.Count - 1; i >= 0; i--)
-        {
-            var menu = Menus[i];
-            if (menu.IsDisposed || !menu.Visible || !menu.Bounds.Contains(at)) continue;
-            target = menu;
-            break;
-        }
-        // メニューの外（別の画面も含む）で回したホイールは、そのまま下の窓へ流す。
-        if (target is null) return false;
+        if (target.IsDisposed || !target.Visible) return;
 
         _pending += delta;
         var notches = _pending / 120;
@@ -236,8 +321,6 @@ internal static class MenuWheel
             RefreshArrows?.Invoke(target, null);
             target.Invalidate();
         }
-        // 送れなくても、メニューの上で回したホイールは下のページへ流さない。
-        return true;
     }
 
     /// <summary>まだ隠れている項目がその向きにあるか。送り矢印が押せるかどうかと同じ判定。</summary>
