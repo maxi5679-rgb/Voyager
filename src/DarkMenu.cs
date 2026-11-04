@@ -351,26 +351,68 @@ internal static class MenuWheel
         var steps = notches * (lines <= 0 ? 3 : Math.Min(lines, 10));
         var up = steps > 0;
 
-        if (ScrollBy is not null && Range(target) is (var first, var last))
+        if (ScrollBy is not null && Range(target) is (var first, _))
         {
-            // 動かせる量で頭を打ち、全項目を 1 回だけ置き直す。正の値で下へ送る（項目が上へ動く）。
-            var area = target.DisplayRectangle;
-            var want = Math.Abs(steps) * first.Height;
-            var pixels = up
-                ? -Math.Min(want, area.Top - first.Bounds.Top)
-                : Math.Min(want, last.Bounds.Bottom - area.Bottom);
-            if (pixels == 0 || (up ? pixels > 0 : pixels < 0)) return;
-            ScrollBy.Invoke(target, [pixels]);
+            // 一気に飛ばさず、数コマに分けて滑らかに送る。回し続けた分は残りに足し込むので、
+            // 速く回せばそのぶん速く進む。正の値で下へ送る（項目が上へ動く）。
+            if (!ReferenceEquals(_animTarget, target)) _animLeft = 0;
+            _animTarget = target;
+            _animLeft += -steps * first.Height;
+            Animator.Start();
+            return;
         }
-        else
-        {
-            var moved = 0;
-            for (var n = 0; n < Math.Abs(steps) && CanScroll(target, up); n++, moved++)
-                Scroll!.Invoke(target, [up]);
-            if (moved == 0) return;
-        }
+
+        var moved = 0;
+        for (var n = 0; n < Math.Abs(steps) && CanScroll(target, up); n++, moved++)
+            Scroll!.Invoke(target, [up]);
+        if (moved == 0) return;
         RefreshArrows?.Invoke(target, null);
         target.Invalidate();
+    }
+
+    // 滑らかに送るためのコマ送り。UI スレッドの Timer なので、送る処理はいつも UI スレッドで走る。
+    private static readonly System.Windows.Forms.Timer Animator = CreateAnimator();
+    private static ToolStripDropDownMenu? _animTarget;
+    private static int _animLeft;         // まだ送っていない量（画素）。正で下へ
+
+    private static System.Windows.Forms.Timer CreateAnimator()
+    {
+        var timer = new System.Windows.Forms.Timer { Interval = 10 };
+        timer.Tick += (_, _) => Step();
+        return timer;
+    }
+
+    /// <summary>1 コマ。残りの 3 割ほどを送る（最初は速く、止まり際はゆっくり）。</summary>
+    private static void Step()
+    {
+        var target = _animTarget;
+        if (target is null || target.IsDisposed || !target.Visible || _animLeft == 0
+            || Range(target) is not (var first, var last))
+        {
+            Stop();
+            return;
+        }
+
+        var area = target.DisplayRectangle;
+        var step = (int)Math.Round(_animLeft * 0.3);
+        if (Math.Abs(step) < 2) step = Math.Abs(_animLeft) < 2 ? _animLeft : Math.Sign(_animLeft) * 2;
+        // 端より先へは送らない。端に着いたら残りは捨てる。
+        var room = step > 0 ? last.Bounds.Bottom - area.Bottom : area.Top - first.Bounds.Top;
+        if (room <= 0) { Stop(); return; }
+        if (Math.Abs(step) > room) { step = Math.Sign(step) * room; _animLeft = step; }
+
+        ScrollBy!.Invoke(target, [step]);
+        _animLeft -= step;
+        RefreshArrows?.Invoke(target, null);
+        target.Invalidate();
+        if (_animLeft == 0) Stop();
+    }
+
+    private static void Stop()
+    {
+        Animator.Stop();
+        _animLeft = 0;
+        _animTarget = null;
     }
 
     /// <summary>表示している最初と最後の項目。</summary>
