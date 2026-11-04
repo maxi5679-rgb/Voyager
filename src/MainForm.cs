@@ -1231,7 +1231,7 @@ internal sealed class MainForm : Form
             if (!changed) { Log.Write($"favicon: unchanged ({targets.Count} matched)"); return; }
 
             // 見た目はすぐ直す。保存は静かになってからまとめて 1 回。
-            _bar.Reload();   // サイドバーはアイコンを出していないので触らない（開いた枝が閉じる）
+            _bar.Reload();   // サイドバーは開き直したときに新しい絵になる（ここで描き直すと開いた枝が閉じる）
             _faviconSave.Stop();
             _faviconSave.Start();
             Log.Write($"favicon: updated {targets.Count} for {Log.Url(url)} ({buffer.Length} bytes)");
