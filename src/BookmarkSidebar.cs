@@ -23,6 +23,19 @@ internal sealed class BookmarkSidebar : Panel
     private readonly FlowLayoutPanel _tools;
     private readonly Panel _gap;
 
+    /// <summary>
+    /// 木の行頭に出すファビコン。0 番は空白（アイコンの無いブックマーク）、1 番はフォルダ。
+    /// 2 番から先はブックマークの data URI ごとに 1 枚。何百件も同じ絵を使うので、
+    /// data URI を鍵にして番号を引く（ImageList の鍵検索は総なめなので自前で持つ）。
+    ///
+    /// 開いたときの bookmarks.json の絵を出すだけで、表示中のページのアイコンが変わっても
+    /// その場では差し替えない。次に開き直したとき（Reload）に新しい絵になる。
+    /// </summary>
+    private readonly ImageList _icons = new() { ColorDepth = ColorDepth.Depth32Bit };
+    private readonly Dictionary<string, int> _iconIndex = [];
+    private const int BlankIcon = 0;
+    private const int FolderIcon = 1;
+
     /// <summary>url, 新しいタブで開くか</summary>
     public event Action<string, bool>? OpenRequested;
 
@@ -63,6 +76,9 @@ internal sealed class BookmarkSidebar : Panel
             ShowRootLines = true,
             LabelEdit = true,
             ItemHeight = RowHeight,   // 実際の値は ApplyDpi() で入れ直す
+            ImageList = _icons,
+            ImageIndex = BlankIcon,
+            SelectedImageIndex = BlankIcon,
         };
         _search.TextChanged += (_, _) => Refresh_();
         _search.KeyDown += (_, e) =>
@@ -172,6 +188,14 @@ internal sealed class BookmarkSidebar : Panel
         var h = (int)Math.Round(RowHeight * DeviceDpi / 96.0);
         if (_tree.ItemHeight != h) _tree.ItemHeight = h;
 
+        // ファビコンも画素で持つので、拡大率が変わったら作り直して木を描き直す。
+        var px = ToDevice(Favicons.Size);
+        if (_icons.ImageSize.Width != px || _icons.Images.Count == 0)
+        {
+            ResetIcons(px);
+            Refresh_();
+        }
+
         // 幅も画素なので、拡大率が変わっても WinForms は直してくれない。
         // 200% の画面では実質半分の幅になり、件数が枠の外へ出る。
         _applying = true;
@@ -268,6 +292,9 @@ internal sealed class BookmarkSidebar : Panel
         _tree.BeginUpdate();
         _tree.Nodes.Clear();
 
+        // 木を作り直すたびに増え続けないよう、増えすぎたら一度空にする。
+        if (_iconIndex.Count > 3000) ResetIcons(_icons.ImageSize.Width);
+
         var q = _search.Text.Trim();
         if (q.Length > 0)
         {
@@ -276,6 +303,7 @@ internal sealed class BookmarkSidebar : Panel
             {
                 var path = _store.PathOf(h);
                 var n = new TreeNode(h.Title.Length > 0 ? Strings.FolderName(h.Title) : h.Url ?? "") { Tag = h };
+                SetIcon(n, h);
                 n.ToolTipText = string.IsNullOrEmpty(path) ? (h.Url ?? "") : $"{path}\n{h.Url}";
                 if (path.Length > 0) n.Text += $"   〈{path}〉";
                 _tree.Nodes.Add(n);
@@ -299,6 +327,7 @@ internal sealed class BookmarkSidebar : Panel
     private TreeNode MakeNode(BookmarkNode b)
     {
         var n = new TreeNode(b.Title.Length > 0 ? Strings.FolderName(b.Title) : (b.Url ?? Strings.Untitled)) { Tag = b };
+        SetIcon(n, b);
         if (b.IsFolder)
         {
             if (_store.Children(b.Id).Count > 0)
@@ -310,6 +339,52 @@ internal sealed class BookmarkSidebar : Panel
         }
         else n.ToolTipText = b.Url ?? "";
         return n;
+    }
+
+    // ---------------------------------------------------------------- ファビコン
+
+    /// <summary>空白とフォルダの 2 枚だけにして、指定の大きさで作り直す。</summary>
+    private void ResetIcons(int px)
+    {
+        px = Math.Clamp(px, 8, 128);
+        _icons.Images.Clear();
+        _iconIndex.Clear();
+        if (_icons.ImageSize.Width != px) _icons.ImageSize = new Size(px, px);   // 中身も消える
+        _icons.Images.Add(new Bitmap(px, px));   // BlankIcon
+        _icons.Images.Add(DrawFolder(px));       // FolderIcon
+    }
+
+    /// <summary>ブックマークバーと同じ、小さな四角のフォルダ。</summary>
+    private Bitmap DrawFolder(int px)
+    {
+        var bmp = new Bitmap(px, px);
+        using var g = Graphics.FromImage(bmp);
+        using var fill = new SolidBrush(Theme.Muted);
+        var box = new Rectangle(ToDevice(1), (px - ToDevice(12)) / 2, px - ToDevice(3), ToDevice(11));
+        var lip = Math.Max(1, ToDevice(2));
+        var tab = Math.Max(1, ToDevice(3));
+        g.FillRectangle(fill, box.X, box.Y + lip, box.Width, box.Height - lip);
+        g.FillRectangle(fill, box.X, box.Y, box.Width / 2, tab);
+        return bmp;
+    }
+
+    private void SetIcon(TreeNode n, BookmarkNode b)
+    {
+        var i = b.IsFolder ? FolderIcon : IconIndexOf(b.Icon);
+        n.ImageIndex = i;
+        n.SelectedImageIndex = i;   // 選んだ行だけ既定の絵に戻らないように
+    }
+
+    private int IconIndexOf(string? dataUri)
+    {
+        if (string.IsNullOrWhiteSpace(dataUri) || _icons.Images.Count == 0) return BlankIcon;
+        if (_iconIndex.TryGetValue(dataUri, out var i)) return i;
+
+        var image = Favicons.Get(dataUri, _icons.ImageSize.Width);
+        i = image is null ? BlankIcon : _icons.Images.Count;
+        if (image is not null) _icons.Images.Add(image);
+        _iconIndex[dataUri] = i;   // 壊れた絵も覚えておき、毎回読み直さない
+        return i;
     }
 
     private void OnBeforeExpand(object? sender, TreeViewCancelEventArgs e)
