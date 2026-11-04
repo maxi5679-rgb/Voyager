@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Voyager;
 
 internal sealed class DarkColorTable : ProfessionalColorTable
@@ -92,13 +94,42 @@ internal static class DarkMenu
 /// ホイールには一切反応しない（ToolStrip 側にホイールの処理が無い）。項目の多いフォルダで
 /// 矢印の上に止めておく以外に送る手段が無く、「スクロールが効かない」ように見えていた。
 ///
-/// ホイールはカーソルの下の窓か、フォーカスのある窓のどちらかに届く（Windows の設定次第）。
-/// どちらでも拾えるよう、メッセージを窓ではなくアプリ全体で受け、カーソルの下にある
-/// 登録済みのメニューを送る。送る処理は矢印を押したときと同じ内部の ScrollInternal(bool) を使う。
+/// 最初はアプリのメッセージフィルターで WM_MOUSEWHEEL を拾ったが、1.1.12 では動かなかった。
+/// メニューはフォーカスを取らないので、ホイールはフォーカスのあるページ（WebView2。別プロセスの窓）
+/// へ送られ、こちらのメッセージループには来ない。そこで、メニューが開いている間だけ
+/// 低レベルのマウスフック（WH_MOUSE_LL）を張り、どの窓へ送られるかの前に横取りする。
+/// カーソルの下に開いたメニューがあればそれを送り、ホイールはページへ流さない。
+/// 送る処理は矢印を押したときと同じ内部の ScrollInternal(bool) を使う。
 /// </summary>
 internal static class MenuWheel
 {
+    private const int WH_MOUSE_LL = 14;
     private const int WM_MOUSEWHEEL = 0x020A;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, HookProc proc, IntPtr hMod, uint threadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hook);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandle(string? name);
 
     // いま開いているメニューだけを持つ。閉じたものは外すので、作り捨てのメニューが溜まらない。
     private static readonly List<ToolStripDropDownMenu> Menus = [];
@@ -112,7 +143,9 @@ internal static class MenuWheel
         typeof(ToolStripDropDownMenu).GetMethod("UpdateScrollButtonStatus",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
             Type.EmptyTypes);
-    private static bool _installed;
+    // フックに渡したデリゲートは GC に回収されないよう、ずっと持っておく。
+    private static readonly HookProc Proc = OnMouse;
+    private static IntPtr _hook;
     private static int _pending;   // 1 目盛り（120）に満たないタッチパッドの細かい送りを貯める
 
     public static void Enable(ToolStripDropDown dropDown)
@@ -128,57 +161,87 @@ internal static class MenuWheel
         {
             Menus.Remove(menu);
             if (menu.Visible) Menus.Add(menu);
+            Update();
         };
-        menu.Disposed += (_, _) => Menus.Remove(menu);
-        if (menu.Visible) Menus.Add(menu);
-        if (!_installed)
+        menu.Disposed += (_, _) => { Menus.Remove(menu); Update(); };
+        if (menu.Visible) { Menus.Add(menu); Update(); }
+    }
+
+    /// <summary>メニューが 1 枚でも開いていればフックを張り、全部閉じたら外す。</summary>
+    private static void Update()
+    {
+        if (Menus.Count > 0 && _hook == IntPtr.Zero)
         {
-            _installed = true;
-            Application.AddMessageFilter(new Filter());
-            Log.Write("menu wheel: on");
+            _pending = 0;
+            _hook = SetWindowsHookEx(WH_MOUSE_LL, Proc, GetModuleHandle(null), 0);
+            if (_hook == IntPtr.Zero)
+                Log.Write($"menu wheel: hook failed (error {Marshal.GetLastWin32Error()})");
+            else
+                Log.Write("menu wheel: on");
+        }
+        else if (Menus.Count == 0 && _hook != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hook);
+            _hook = IntPtr.Zero;
         }
     }
 
-    private sealed class Filter : IMessageFilter
+    private static IntPtr OnMouse(int code, IntPtr wParam, IntPtr lParam)
     {
-        public bool PreFilterMessage(ref Message m)
+        if (code >= 0 && (int)wParam == WM_MOUSEWHEEL)
         {
-            if (m.Msg != WM_MOUSEWHEEL || Menus.Count == 0) return false;
-
-            // 後から開いた子のメニューほど上に重なっているので、後ろから探す。
-            var at = Cursor.Position;
-            ToolStripDropDownMenu? target = null;
-            for (var i = Menus.Count - 1; i >= 0; i--)
+            try
             {
-                var menu = Menus[i];
-                if (menu.IsDisposed || !menu.Visible || !menu.Bounds.Contains(at)) continue;
-                target = menu;
-                break;
+                var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                if (Handle(new Point(info.X, info.Y), (short)(info.MouseData >> 16)))
+                    return (IntPtr)1;   // 送ったのでページへは流さない
             }
-            if (target is null)
+            catch (Exception ex)
             {
-                Log.Write($"menu wheel: no menu under cursor (open={Menus.Count} at={at})");
-                return false;
+                Log.Write($"menu wheel: {ex.GetType().Name}: {ex.Message}");
             }
-
-            _pending += (short)((long)m.WParam >> 16 & 0xFFFF);
-            var notches = _pending / 120;
-            _pending %= 120;
-            var lines = SystemInformation.MouseWheelScrollLines;
-            var steps = notches * (lines <= 0 ? 3 : Math.Min(lines, 10));
-            var moved = 0;
-            for (var n = 0; n < Math.Abs(steps); n++)
-            {
-                var up = steps > 0;
-                if (!CanScroll(target, up)) break;
-                Scroll!.Invoke(target, [up]);
-                moved++;
-            }
-            Log.Write($"menu wheel: items={target.Items.Count} steps={steps} moved={moved}");
-            if (steps != 0) RefreshArrows?.Invoke(target, null);
-            // 送れなくても、メニューの上で回したホイールは下のページへ流さない。
-            return true;
         }
+        return CallNextHookEx(_hook, code, wParam, lParam);
+    }
+
+    private static bool Handle(Point at, int delta)
+    {
+        // 後から開いた子のメニューほど上に重なっているので、後ろから探す。
+        ToolStripDropDownMenu? target = null;
+        for (var i = Menus.Count - 1; i >= 0; i--)
+        {
+            var menu = Menus[i];
+            if (menu.IsDisposed || !menu.Visible || !menu.Bounds.Contains(at)) continue;
+            target = menu;
+            break;
+        }
+        if (target is null)
+        {
+            Log.Write($"menu wheel: no menu under cursor (open={Menus.Count} at={at})");
+            return false;
+        }
+
+        _pending += delta;
+        var notches = _pending / 120;
+        _pending %= 120;
+        var lines = SystemInformation.MouseWheelScrollLines;
+        var steps = notches * (lines <= 0 ? 3 : Math.Min(lines, 10));
+        var moved = 0;
+        for (var n = 0; n < Math.Abs(steps); n++)
+        {
+            var up = steps > 0;
+            if (!CanScroll(target, up)) break;
+            Scroll!.Invoke(target, [up]);
+            moved++;
+        }
+        if (moved > 0)
+        {
+            RefreshArrows?.Invoke(target, null);
+            target.Invalidate();
+        }
+        Log.Write($"menu wheel: items={target.Items.Count} steps={steps} moved={moved}");
+        // 送れなくても、メニューの上で回したホイールは下のページへ流さない。
+        return true;
     }
 
     /// <summary>まだ隠れている項目がその向きにあるか。送り矢印が押せるかどうかと同じ判定。</summary>
