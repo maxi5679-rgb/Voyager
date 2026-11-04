@@ -416,15 +416,11 @@ internal sealed class BookmarkBar : Panel
             // 組み立て自体は 516ms で終わっていたので、疑わしいのは表示の段。
             // 根のメニューには上限があって 37 件でも問題なく出ていたが、子には無かった。
             sub.DropDown.MaximumSize = new Size(0, MenuCap(Screen.FromControl(this).WorkingArea).cap);
-            var tLayout = Environment.TickCount64;
             sub.DropDown.ResumeLayout();
             if (sub.DropDown is ToolStripDropDownMenu dd) dd.ShowItemToolTips = true;
             MenuWheel.Enable(sub.DropDown);
-            var tPlace = Environment.TickCount64;
             KeepOnSameScreen(sub);
-            var tEnd = Environment.TickCount64;
-            Log.Write($"folder submenu: items={children.Count} built in {tEnd - t}ms " +
-                      $"(layout {tPlace - tLayout}ms, place {tEnd - tPlace}ms)");
+            Log.Write($"folder submenu: items={children.Count} built in {Environment.TickCount64 - t}ms");
             shownFrom = Environment.TickCount64;
         };
         // 組み立ててから実際に出るまで。ここが出なければ、止まったのは表示の段。
@@ -462,15 +458,11 @@ internal sealed class BookmarkBar : Panel
             return;
         }
 
-        // どこに時間がかかっているかをログに出す（採寸・アイコン・項目の追加）。
-        long fitTicks = 0, iconTicks = 0;
         var items = new List<ToolStripItem>(children.Count);
         foreach (var c in children)
         {
             var full = Label(c);
-            var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var shown = DarkMenu.Fit(full, DeviceDpi);
-            fitTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
             if (c.IsFolder)
             {
@@ -485,20 +477,14 @@ internal sealed class BookmarkBar : Panel
             {
                 var url = c.Url!;
                 var item = DarkMenu.Item(shown, () => OpenRequested?.Invoke(url, false));
-                var t1 = System.Diagnostics.Stopwatch.GetTimestamp();
                 if (Icon(c) is { } icon) item.Image = icon;
-                iconTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t1;
                 Whole(item, full, shown);
                 items.Add(item);
             }
         }
 
         // 1 件ずつ Add すると、そのたびにメニュー側の後始末が走る。まとめて渡す。
-        var t2 = System.Diagnostics.Stopwatch.GetTimestamp();
         into.AddRange(items.ToArray());
-        var addMs = System.Diagnostics.Stopwatch.GetElapsedTime(t2).TotalMilliseconds;
-        Log.Write($"folder fill: items={items.Count} fit={fitTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms " +
-                  $"icons={iconTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms add={addMs:0}ms");
     }
 
     private void ShowItemMenu(BookmarkNode node, Point at)
