@@ -87,8 +87,12 @@ internal sealed class BookmarkStore
         return fresh;
     }
 
+    /// <summary>保存のたびに 1 進む。作っておいたメニューがまだ使えるかを見分けるのに使う。</summary>
+    public int Version { get; private set; }
+
     public void Save()
     {
+        Version++;
         try
         {
             Directory.CreateDirectory(AppSettings.Dir);

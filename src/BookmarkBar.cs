@@ -72,6 +72,9 @@ internal sealed class BookmarkBar : Panel
 
     public void Reload()
     {
+        // 開いているメニューをいきなり閉じないよう、捨てるのは次に開くときにする。
+        // （裏のタブが読み終わってファビコンが変わるだけでもここへ来る）
+        _menusStale = true;
         _items.Clear();
         foreach (var n in _store.Children(BookmarkStore.RootBar)) _items.Add(n);
         Layout_();
@@ -289,12 +292,45 @@ internal sealed class BookmarkBar : Panel
     /// <summary>フォルダの中身をメニューで出す。入れ子はそのまま入れ子のメニューにする。</summary>
     private void ShowFolderMenu(List<BookmarkNode> children, Point at)
     {
-        var menu = DarkMenu.Create(DeviceDpi);
-        menu.ShowItemToolTips = true;   // 切り詰めた題名を全部読めるようにする
-        var t = Environment.TickCount64;
-        Fill(menu.Items, children, 0);
-        Log.Write($"folder menu: built in {Environment.TickCount64 - t}ms");
+        // 一度作ったメニューは取っておき、次に同じフォルダを開いたときはそのまま出す。
+        // 243 件のフォルダは作るのに 0.7 秒かかり、その大半は WinForms が項目を並べる段なので、
+        // こちらの工夫では縮めきれない。中の子フォルダも、一度開けば作り直さない。
+        // ブックマークが保存されたり（Version）、バーが読み直されたら、作り直す。
+        var key = string.Join(",", children.Select(c => c.Id));
+        if (_menusStale || _menuVersion != _store.Version || _menuDpi != DeviceDpi) DropMenus();
+        if (!_menus.TryGetValue(key, out var menu))
+        {
+            menu = DarkMenu.Create(DeviceDpi);
+            menu.ShowItemToolTips = true;   // 切り詰めた題名を全部読めるようにする
+            var t = Environment.TickCount64;
+            Fill(menu.Items, children, 0);
+            Log.Write($"folder menu: built in {Environment.TickCount64 - t}ms");
+            _menus[key] = menu;
+        }
+        else
+        {
+            Log.Write($"folder menu: reused (items={menu.Items.Count})");
+        }
         Popup(menu, at);
+    }
+
+    private readonly Dictionary<string, ContextMenuStrip> _menus = [];
+    private int _menuVersion;
+    private int _menuDpi;
+    private bool _menusStale;
+
+    /// <summary>取っておいたメニューを捨てる。中の子フォルダのメニューも一緒に片付く。</summary>
+    private void DropMenus()
+    {
+        foreach (var m in _menus.Values)
+        {
+            if (m.Visible) m.Close();
+            m.Dispose();
+        }
+        _menus.Clear();
+        _menusStale = false;
+        _menuVersion = _store.Version;
+        _menuDpi = DeviceDpi;
     }
 
     /// <summary>題名を切り詰めたときだけ、元の題名を吹き出しで読めるようにする。</summary>
@@ -363,7 +399,12 @@ internal sealed class BookmarkBar : Panel
         long shownFrom = 0;
         sub.DropDownOpening += (_, _) =>
         {
-            if (built) return;
+            if (built)
+            {
+                // 取っておいたメニューを開き直すときも、出す向きは今の位置で決め直す。
+                KeepOnSameScreen(sub);
+                return;
+            }
             built = true;
             var t = Environment.TickCount64;
             sub.DropDown.SuspendLayout();
@@ -375,11 +416,15 @@ internal sealed class BookmarkBar : Panel
             // 組み立て自体は 516ms で終わっていたので、疑わしいのは表示の段。
             // 根のメニューには上限があって 37 件でも問題なく出ていたが、子には無かった。
             sub.DropDown.MaximumSize = new Size(0, MenuCap(Screen.FromControl(this).WorkingArea).cap);
+            var tLayout = Environment.TickCount64;
             sub.DropDown.ResumeLayout();
             if (sub.DropDown is ToolStripDropDownMenu dd) dd.ShowItemToolTips = true;
             MenuWheel.Enable(sub.DropDown);
+            var tPlace = Environment.TickCount64;
             KeepOnSameScreen(sub);
-            Log.Write($"folder submenu: items={children.Count} built in {Environment.TickCount64 - t}ms");
+            var tEnd = Environment.TickCount64;
+            Log.Write($"folder submenu: items={children.Count} built in {tEnd - t}ms " +
+                      $"(layout {tPlace - tLayout}ms, place {tEnd - tPlace}ms)");
             shownFrom = Environment.TickCount64;
         };
         // 組み立ててから実際に出るまで。ここが出なければ、止まったのは表示の段。
