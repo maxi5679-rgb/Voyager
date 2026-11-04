@@ -417,10 +417,15 @@ internal sealed class BookmarkBar : Panel
             return;
         }
 
+        // どこに時間がかかっているかをログに出す（採寸・アイコン・項目の追加）。
+        long fitTicks = 0, iconTicks = 0;
+        var items = new List<ToolStripItem>(children.Count);
         foreach (var c in children)
         {
             var full = Label(c);
+            var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var shown = DarkMenu.Fit(full, DeviceDpi);
+            fitTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
             if (c.IsFolder)
             {
@@ -429,17 +434,26 @@ internal sealed class BookmarkBar : Panel
                 if (depth >= 5) sub.DropDownItems.Add(DarkMenu.Item(Strings.MenuTooDeep, () => { }, enabled: false));
                 else FillLater(sub, c.Id, depth + 1);
                 Whole(sub, full, shown);
-                into.Add(sub);
+                items.Add(sub);
             }
             else if (!string.IsNullOrWhiteSpace(c.Url))
             {
                 var url = c.Url!;
                 var item = DarkMenu.Item(shown, () => OpenRequested?.Invoke(url, false));
+                var t1 = System.Diagnostics.Stopwatch.GetTimestamp();
                 if (Icon(c) is { } icon) item.Image = icon;
+                iconTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t1;
                 Whole(item, full, shown);
-                into.Add(item);
+                items.Add(item);
             }
         }
+
+        // 1 件ずつ Add すると、そのたびにメニュー側の後始末が走る。まとめて渡す。
+        var t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+        into.AddRange(items.ToArray());
+        var addMs = System.Diagnostics.Stopwatch.GetElapsedTime(t2).TotalMilliseconds;
+        Log.Write($"folder fill: items={items.Count} fit={fitTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms " +
+                  $"icons={iconTicks * 1000 / System.Diagnostics.Stopwatch.Frequency}ms add={addMs:0}ms");
     }
 
     private void ShowItemMenu(BookmarkNode node, Point at)

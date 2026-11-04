@@ -67,23 +67,47 @@ internal static class DarkMenu
     {
         if (string.IsNullOrEmpty(text)) return text;
 
+        // 同じ題名は何度も来る（メニューは閉じるたびに作り直す）。採寸は 1 回で済ませる。
+        lock (FitCache)
+        {
+            if (FitCache.TryGetValue((text, dpi), out var hit)) return hit;
+        }
+
+        var shown = Cut(text, dpi);
+        lock (FitCache)
+        {
+            if (FitCache.Count > 5000) FitCache.Clear();
+            FitCache[(text, dpi)] = shown;
+        }
+        return shown;
+    }
+
+    private static readonly Dictionary<(string, int), string> FitCache = [];
+
+    private static string Cut(string text, int dpi)
+    {
         var max = (int)Math.Round(MaxTextWidth * dpi / 96.0);
         var font = ItemFont(dpi);
         int Width(string s) =>
             TextRenderer.MeasureText(s, font, new Size(int.MaxValue, int.MaxValue),
                 TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine).Width;
 
-        if (Width(text) <= max) return text;
+        var full = Width(text);
+        if (full <= max) return text;
 
-        // 入る長さを二分探索する。1 文字ずつ削ると、長い題名で採寸が何十回も走る。
-        var lo = 0;
-        var hi = text.Length;
-        while (lo < hi)
+        // 入る長さを探す。二分探索でも 1 件 9 回前後採寸が走り、243 件のフォルダ（0.75 秒）を開く
+        // 遅さの一因になる。幅の比から見当をつけ、その前後だけ測る（たいてい 2〜4 回）。
+        bool Fits(int len) => len == 0 || Width(text[..len] + "…") <= max;
+        var n = Math.Clamp((int)((long)text.Length * max / full), 0, text.Length - 1);
+        if (Fits(n))
         {
-            var mid = (lo + hi + 1) / 2;
-            if (Width(text[..mid] + "…") <= max) lo = mid; else hi = mid - 1;
+            while (n + 1 < text.Length && Fits(n + 1)) n++;
         }
-        return lo == 0 ? "…" : text[..lo] + "…";
+        else
+        {
+            do n--; while (n > 0 && !Fits(n));
+        }
+        return n == 0 ? "…" : text[..n] + "…";
     }
 }
 
