@@ -88,11 +88,11 @@ internal sealed class BookmarkStore
     }
 
     /// <summary>保存のたびに 1 進む。作っておいたメニューがまだ使えるかを見分けるのに使う。</summary>
-    public int Version { get; private set; }
+    [JsonIgnore] public int SaveCount { get; private set; }
 
     public void Save()
     {
-        Version++;
+        SaveCount++;
         try
         {
             Directory.CreateDirectory(AppSettings.Dir);

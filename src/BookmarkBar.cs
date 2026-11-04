@@ -295,9 +295,9 @@ internal sealed class BookmarkBar : Panel
         // 一度作ったメニューは取っておき、次に同じフォルダを開いたときはそのまま出す。
         // 243 件のフォルダは作るのに 0.7 秒かかり、その大半は WinForms が項目を並べる段なので、
         // こちらの工夫では縮めきれない。中の子フォルダも、一度開けば作り直さない。
-        // ブックマークが保存されたり（Version）、バーが読み直されたら、作り直す。
+        // ブックマークが保存されたり（SaveCount）、バーが読み直されたら、作り直す。
         var key = string.Join(",", children.Select(c => c.Id));
-        if (_menusStale || _menuVersion != _store.Version || _menuDpi != DeviceDpi) DropMenus();
+        if (_menusStale || _menuVersion != _store.SaveCount || _menuDpi != DeviceDpi) DropMenus();
         if (!_menus.TryGetValue(key, out var menu))
         {
             menu = DarkMenu.Create(DeviceDpi);
@@ -329,7 +329,7 @@ internal sealed class BookmarkBar : Panel
         }
         _menus.Clear();
         _menusStale = false;
-        _menuVersion = _store.Version;
+        _menuVersion = _store.SaveCount;
         _menuDpi = DeviceDpi;
     }
 
