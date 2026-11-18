@@ -58,6 +58,9 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
   drag to move and reorder, a list of duplicates, and a broken-link check that runs only
   when you start it
 - **Downloads** — a default folder you can set, or a prompt for every download
+- **Ask AI** — a button right of the address bar (also on the page's context menu) copies the
+  open page's text with a request (summarize, key points, or a question) and opens the chosen AI
+  in a new tab; paste and send. The page is read only when you press it; nothing runs in the background
 - **Context menus** drawn by the app, in the app's own colors, including
   save / copy / copy-address for images
 - **Per-monitor DPI**. Fonts, icons, row heights and menus all follow the display, and
