@@ -879,7 +879,7 @@ internal sealed class MainForm : Form
             Navigate(tab, url);
     }
 
-    private void OpenInNewTab(string url)
+    private void OpenInNewTab(string url, bool focusPage = false)
     {
         if (!UrlHelper.IsNavigable(url)) return;
         var tab = new BrowserTab();
@@ -887,7 +887,7 @@ internal sealed class MainForm : Form
         _active = tab;
         CloseInternalPages();
         RebuildTabStrip();
-        Navigate(tab, url);
+        Navigate(tab, url, focusPage);
     }
 
     /// <summary>
@@ -1419,10 +1419,28 @@ internal sealed class MainForm : Form
             ? $"{Strings.AskAiQuestionIntro}\n\n{page}\n\n{request}"
             : $"{request}\n\n{page}";
 
-        SetClipboard(text);
+        // 書けたかを読み返して確かめる。他のアプリがクリップボードを掴んでいると黙って失敗し、
+        // 前にコピーしていたもの（アドレス欄の URL など）が残ったまま AI を開いてしまう。
+        if (!TrySetClipboard(text, out var why))
+        {
+            ShowNotice(Strings.AskAiCopyFailed);
+            Log.Write($"ask ai: {kind} clipboard FAILED ({why}), {body.Length} chars");
+            return;
+        }
         var engine = _engine ?? Engines.Default;
-        OpenInNewTab(engine.Home);
-        ShowNotice(Strings.AskAiCopied(engine.Name));
+        // ページにフォーカスを移しておく。移さないと「AI に聞く」ボタンにフォーカスが残り、
+        // Ctrl+V を押しても AI の入力欄に何も入らない（1.1.27 で起きた）。
+        OpenInNewTab(engine.Home, focusPage: true);
+        // 新しいタブの WebView2 ができあがるときに吹き出しが消されてしまう（1.1.26 で出なかった）。
+        // 少し待ってから出す。
+        var later = new System.Windows.Forms.Timer { Interval = 1200 };
+        later.Tick += (_, _) =>
+        {
+            later.Stop();
+            later.Dispose();
+            ShowNotice(Strings.AskAiCopied(engine.Name));
+        };
+        later.Start();
         // 本文はログに残さない。長さだけ。
         Log.Write($"ask ai: {kind} {body.Length} chars{(cut ? " (cut)" : "")} -> {engine.Id}");
     }
@@ -2317,6 +2335,28 @@ internal sealed class MainForm : Form
     {
         if (string.IsNullOrEmpty(text)) return;
         try { Clipboard.SetText(text); } catch (ExternalException) { /* 他アプリがクリップボードを掴んでいる */ }
+    }
+
+    /// <summary>
+    /// クリップボードに書き、読み返して同じかを確かめる。SetClipboard と違って失敗を知らせる。
+    /// 掴まれているときのために、間を置いて何度か試す（最長およそ 2 秒）。
+    /// </summary>
+    private static bool TrySetClipboard(string text, out string why)
+    {
+        why = "";
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                Clipboard.SetDataObject(new DataObject(DataFormats.UnicodeText, text), true, 10, 50);
+                if (Clipboard.GetText() == text) return true;
+                why = $"read back differs (try {attempt})";
+            }
+            catch (ExternalException ex) { why = $"{ex.GetType().Name} 0x{ex.ErrorCode:X8} (try {attempt})"; }
+            catch (ThreadStateException ex) { why = $"{ex.GetType().Name} (try {attempt})"; break; }
+            Thread.Sleep(100);
+        }
+        return false;
     }
 
     private static async void Cut(CoreWebView2 core, string? text)
