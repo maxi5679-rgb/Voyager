@@ -43,6 +43,9 @@ internal sealed class MainForm : Form
     /// <summary>アドレス欄の左の用途ボタン。押すと用途の一覧が出る。</summary>
     private Button _purposeBtn = null!;
 
+    /// <summary>アドレス欄の右の「AI に聞く」ボタン。押すと、開いているページについて何を頼むかを選ぶ。</summary>
+    private Button _askAiBtn = null!;
+
     /// <summary>いまの用途（Purposes の id）。保存はせず、起動するたびに「ふだん」から始める。</summary>
     private string _purpose = Purposes.Chat;
 
@@ -264,6 +267,12 @@ internal sealed class MainForm : Form
         omniHost.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 6, BackColor = Theme.Surface });
         omniHost.Controls.Add(_purposeBtn);
 
+        // 「AI に聞く」はアドレス欄の右。押したときだけページの文字を読むので、普段は何もしない。
+        _askAiBtn = TextButton(Strings.AskAi, Strings.AskAiTip, (_, _) => ShowAskAiMenu());
+        _askAiBtn.Dock = DockStyle.Right;
+        omniHost.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 6, BackColor = Theme.Surface });
+        omniHost.Controls.Add(_askAiBtn);
+
         // 同上。BringToFront するとアドレス欄が左端から始まり、URL の先頭がボタンの下に隠れる。
         _navBar.Controls.Add(omniHost);
         _navBar.Controls.Add(navLeft);
@@ -308,6 +317,7 @@ internal sealed class MainForm : Form
     {
         _omni.PlaceholderText = Strings.OmniPlaceholder;
         _settingsBtn.Text = Strings.Settings;
+        _askAiBtn.Text = Strings.AskAi;
 
         _tips.SetToolTip(_newTabBtn, Strings.NewTabTip);
         _tips.SetToolTip(_engineBtn, Strings.PickAiTip);
@@ -318,6 +328,7 @@ internal sealed class MainForm : Form
         _tips.SetToolTip(_home, Strings.Home);
         _tips.SetToolTip(_star, Strings.AddBookmarkTip);
         _tips.SetToolTip(_bmBtn, Strings.BookmarksTip);
+        _tips.SetToolTip(_askAiBtn, Strings.AskAiTip);
 
         // 中身を持たないタブの題名（「新しいタブ」）も入れ直す。
         foreach (var t in _tabs)
@@ -684,7 +695,8 @@ internal sealed class MainForm : Form
         _back.Enabled = onPage && core?.CanGoBack == true;
         _fwd.Enabled = onPage && core?.CanGoForward == true;
         _reload.Enabled = onPage;
-        foreach (var b in new[] { _back, _fwd, _reload })
+        _askAiBtn.Enabled = CanAskAboutPage();
+        foreach (var b in new[] { _back, _fwd, _reload, _askAiBtn })
             b.ForeColor = b.Enabled ? Theme.Text : Theme.Border;
 
         foreach (var t in _tabs)
@@ -1319,6 +1331,100 @@ internal sealed class MainForm : Form
         _menu = menu;
         menu.Closed += (_, _) => { if (ReferenceEquals(_menu, menu)) _menu = null; };
         menu.Show(_purposeBtn, new Point(0, _purposeBtn.Height));
+    }
+
+    // ---------------------------------------------------------------- 開いているページを AI に聞く
+
+    /// <summary>AI に渡す本文の上限（文字数）。これを超えた分は切り、切ったことを書き添える。</summary>
+    private const int AskAiMaxChars = 100_000;
+
+    /// <summary>
+    /// 本文を読めるページを開いているか。内部ページ・設定画面・まだ何も開いていないタブでは押せない。
+    /// </summary>
+    private bool CanAskAboutPage() =>
+        !_settingsOpen && !_aboutOpen && _engine is not null && _active.Page is null &&
+        _active.View?.CoreWebView2 is not null &&
+        Uri.TryCreate(_active.Url, UriKind.Absolute, out var u) && u.Scheme is "http" or "https";
+
+    private void ShowAskAiMenu()
+    {
+        var menu = DarkMenu.Create(DeviceDpi);
+        AddAskAiItems(menu);
+
+        CloseMenu();
+        _menu = menu;
+        menu.Closed += (_, _) => { if (ReferenceEquals(_menu, menu)) _menu = null; };
+        menu.Show(_askAiBtn, new Point(0, _askAiBtn.Height));
+    }
+
+    /// <summary>「要約」「要点」「質問」の 3 項目。ツールバーのボタンとページの右クリックで同じものを出す。</summary>
+    private void AddAskAiItems(ContextMenuStrip menu)
+    {
+        var name = (_engine ?? Engines.Default).Name;
+        var enabled = CanAskAboutPage();
+        menu.Items.Add(DarkMenu.Item(Strings.AskAiSummary(name), () => AskAboutPage(AskKind.Summary), enabled));
+        menu.Items.Add(DarkMenu.Item(Strings.AskAiPoints(name), () => AskAboutPage(AskKind.Points), enabled));
+        menu.Items.Add(DarkMenu.Item(Strings.AskAiQuestion(name), () => AskAboutPage(AskKind.Question), enabled));
+    }
+
+    private enum AskKind { Summary, Points, Question }
+
+    /// <summary>
+    /// 開いているページの本文を読み、頼みごとを添えてクリップボードに入れ、AI を新しいタブで開く。
+    /// 本文は URL に載せない（長さの上限で切れる）。貼り付けてもらう方が、長いページでも全部届く。
+    /// 読むのはボタンを押したときの 1 回だけ。
+    /// </summary>
+    private async void AskAboutPage(AskKind kind)
+    {
+        if (!CanAskAboutPage()) return;
+        var core = _active.View!.CoreWebView2;
+        var url = core.Source;
+        var title = core.DocumentTitle ?? "";
+
+        string body;
+        try
+        {
+            var json = await core.ExecuteScriptAsync(
+                "(() => { const b = document.body; return b ? b.innerText : ''; })()");
+            body = JsonSerializer.Deserialize<string>(json) ?? "";
+        }
+        catch (Exception ex) when (ex is COMException or JsonException or InvalidOperationException)
+        {
+            Log.Write($"ask ai: read failed: {ex.GetType().Name} {ex.Message}");
+            body = "";
+        }
+
+        body = body.Trim();
+        if (body.Length == 0)
+        {
+            ShowNotice(Strings.AskAiNoText);
+            Log.Write("ask ai: no text");
+            return;
+        }
+
+        var cut = body.Length > AskAiMaxChars;
+        if (cut) body = body[..AskAiMaxChars];
+
+        var request = kind switch
+        {
+            AskKind.Summary => Strings.AskAiSummaryPrompt,
+            AskKind.Points => Strings.AskAiPointsPrompt,
+            _ => Strings.AskAiQuestionPrompt,
+        };
+
+        // 質問のときは頼みごとを最後に置く。貼り付けたあと、そのまま続けて質問を打てるように。
+        var page = $"{Strings.AskAiTitle}: {title}\nURL: {url}\n\n----\n{body}\n----" +
+                   (cut ? $"\n{Strings.AskAiCut}" : "");
+        var text = kind == AskKind.Question
+            ? $"{Strings.AskAiQuestionIntro}\n\n{page}\n\n{request}"
+            : $"{request}\n\n{page}";
+
+        SetClipboard(text);
+        var engine = _engine ?? Engines.Default;
+        OpenInNewTab(engine.Home);
+        ShowNotice(Strings.AskAiCopied(engine.Name));
+        // 本文はログに残さない。長さだけ。
+        Log.Write($"ask ai: {kind} {body.Length} chars{(cut ? " (cut)" : "")} -> {engine.Id}");
     }
 
     private void SetPurpose(string purpose)
@@ -1980,6 +2086,9 @@ internal sealed class MainForm : Form
             menu.Items.Add(DarkMenu.Item(Strings.Cut, () => Cut(core, text), !string.IsNullOrEmpty(text)));
             menu.Items.Add(DarkMenu.Item(Strings.Paste, () => Paste(core)));
         }
+
+        Separator(menu);
+        AddAskAiItems(menu);
 
         Separator(menu);
         menu.Items.Add(DarkMenu.Item(Strings.Back, () => core.GoBack(), core.CanGoBack));

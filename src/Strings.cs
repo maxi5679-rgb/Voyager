@@ -74,6 +74,33 @@ internal static class Strings
     /// <summary>選択した語をそのまま出すので、括弧まで含めて言語ごとに変える。</summary>
     public static string SearchFor(string label) => T($"「{label}」を検索", $"Search for “{label}”");
 
+    // ---------------------------------------------------------------- 開いているページを AI に聞く
+
+    public static string AskAi => T("AI に聞く", "Ask AI");
+    public static string AskAiTip =>
+        T("開いているページの本文をコピーして、AI を新しいタブで開きます",
+          "Copies this page's text and opens the AI in a new tab");
+    public static string AskAiSummary(string ai) => T($"{ai} でこのページを要約", $"Summarize this page with {ai}");
+    public static string AskAiPoints(string ai) => T($"{ai} で要点をまとめる", $"List the key points with {ai}");
+    public static string AskAiQuestion(string ai) => T($"{ai} にこのページについて質問", $"Ask {ai} about this page");
+
+    public static string AskAiSummaryPrompt =>
+        T("次のウェブページの内容を、日本語で簡潔に要約してください。",
+          "Summarize the following web page concisely.");
+    public static string AskAiPointsPrompt =>
+        T("次のウェブページの要点を、日本語で箇条書きにまとめてください。",
+          "List the key points of the following web page as bullet points.");
+    public static string AskAiQuestionIntro =>
+        T("次のウェブページの内容を読んで、最後の質問に答えてください。",
+          "Read the following web page and answer the question at the end.");
+    public static string AskAiQuestionPrompt => T("質問：", "Question: ");
+    public static string AskAiTitle => T("タイトル", "Title");
+    public static string AskAiCut => T("（長いため、ここで切っています）", "(Cut here because the page is long.)");
+    public static string AskAiNoText => T("このページからは文字を読み取れませんでした。", "Couldn't read any text on this page.");
+    public static string AskAiCopied(string ai) =>
+        T($"ページの本文をコピーしました。{ai} の入力欄に貼り付けて送信してください（Ctrl+V）。",
+          $"The page text is on the clipboard. Paste it into {ai}'s message box and send (Ctrl+V).");
+
     // ---------------------------------------------------------------- ダウンロード
 
     public static string SaveTo => T("保存先", "Save to");
