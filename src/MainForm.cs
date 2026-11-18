@@ -879,7 +879,7 @@ internal sealed class MainForm : Form
             Navigate(tab, url);
     }
 
-    private void OpenInNewTab(string url)
+    private void OpenInNewTab(string url, bool focusPage = false)
     {
         if (!UrlHelper.IsNavigable(url)) return;
         var tab = new BrowserTab();
@@ -887,7 +887,7 @@ internal sealed class MainForm : Form
         _active = tab;
         CloseInternalPages();
         RebuildTabStrip();
-        Navigate(tab, url);
+        Navigate(tab, url, focusPage);
     }
 
     /// <summary>
@@ -1428,7 +1428,9 @@ internal sealed class MainForm : Form
             return;
         }
         var engine = _engine ?? Engines.Default;
-        OpenInNewTab(engine.Home);
+        // ページにフォーカスを移しておく。移さないと「AI に聞く」ボタンにフォーカスが残り、
+        // Ctrl+V を押しても AI の入力欄に何も入らない（1.1.27 で起きた）。
+        OpenInNewTab(engine.Home, focusPage: true);
         // 新しいタブの WebView2 ができあがるときに吹き出しが消されてしまう（1.1.26 で出なかった）。
         // 少し待ってから出す。
         var later = new System.Windows.Forms.Timer { Interval = 1200 };
