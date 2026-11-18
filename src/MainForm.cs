@@ -1429,7 +1429,16 @@ internal sealed class MainForm : Form
         }
         var engine = _engine ?? Engines.Default;
         OpenInNewTab(engine.Home);
-        ShowNotice(Strings.AskAiCopied(engine.Name));
+        // 新しいタブの WebView2 ができあがるときに吹き出しが消されてしまう（1.1.26 で出なかった）。
+        // 少し待ってから出す。
+        var later = new System.Windows.Forms.Timer { Interval = 1200 };
+        later.Tick += (_, _) =>
+        {
+            later.Stop();
+            later.Dispose();
+            ShowNotice(Strings.AskAiCopied(engine.Name));
+        };
+        later.Start();
         // 本文はログに残さない。長さだけ。
         Log.Write($"ask ai: {kind} {body.Length} chars{(cut ? " (cut)" : "")} -> {engine.Id}");
     }
