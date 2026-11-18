@@ -61,12 +61,35 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
 - **Ask AI** — a button right of the address bar (also on the page's context menu) copies the
   open page's text with a request (summarize, key points, or a question) and opens the chosen AI
   in a new tab; paste and send. The page is read only when you press it; nothing runs in the background
+  (see [Using Ask AI](#using-ask-ai))
 - **Context menus** drawn by the app, in the app's own colors, including
   save / copy / copy-address for images
 - **Per-monitor DPI**. Fonts, icons, row heights and menus all follow the display, and
   keep their size across 96 / 144 / 192 dpi and when a window moves between monitors
 - **Japanese and English**, following the Windows display language unless you choose one
 - **An About page**, because the point was to see the name V'Ger on screen
+
+## Using Ask AI
+
+Have an AI summarize the page you are reading, or ask it questions about it.
+
+1. Open the page.
+2. Press **Ask AI** to the right of the address bar (the same items are on the page's right-click menu).
+3. Pick what you want:
+   - **Summarize this page** — a short summary
+   - **List the key points** — bullet points
+   - **Ask about this page** — write your own question
+4. The AI you have chosen (Grok, ChatGPT, Claude, …) opens in a new tab, and Voyager says the page text is on the clipboard.
+5. Press **Ctrl+V** in the message box and send. For a question, type it after "Question:" at the end of the pasted text, then send.
+
+**Keep in mind**
+
+- Don't copy anything else between steps 2 and 5. Copying the URL from the address bar, for example,
+  replaces the page text, and only the URL gets pasted.
+- The text goes to the AI chosen with the AI button at the top right. Change it there first if you want another.
+- Long pages are cut at 100,000 characters, with a note saying so at the end.
+- It doesn't work on Voyager's own pages (start, settings) or on pages without text.
+- If Voyager says it couldn't copy, another app is using the clipboard. Press it again.
 
 ## Layout
 
