@@ -97,6 +97,9 @@ internal static class Strings
     public static string AskAiTitle => T("タイトル", "Title");
     public static string AskAiCut => T("（長いため、ここで切っています）", "(Cut here because the page is long.)");
     public static string AskAiNoText => T("このページからは文字を読み取れませんでした。", "Couldn't read any text on this page.");
+    public static string AskAiCopyFailed =>
+        T("ページの本文をコピーできませんでした。他のアプリがクリップボードを使っているかもしれません。もう一度押してください。",
+          "Couldn't copy the page text; another app may be using the clipboard. Please try again.");
     public static string AskAiCopied(string ai) =>
         T($"ページの本文をコピーしました。{ai} の入力欄に貼り付けて送信してください（Ctrl+V）。",
           $"The page text is on the clipboard. Paste it into {ai}'s message box and send (Ctrl+V).");

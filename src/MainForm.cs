@@ -1419,7 +1419,14 @@ internal sealed class MainForm : Form
             ? $"{Strings.AskAiQuestionIntro}\n\n{page}\n\n{request}"
             : $"{request}\n\n{page}";
 
-        SetClipboard(text);
+        // 書けたかを読み返して確かめる。他のアプリがクリップボードを掴んでいると黙って失敗し、
+        // 前にコピーしていたもの（アドレス欄の URL など）が残ったまま AI を開いてしまう。
+        if (!TrySetClipboard(text, out var why))
+        {
+            ShowNotice(Strings.AskAiCopyFailed);
+            Log.Write($"ask ai: {kind} clipboard FAILED ({why}), {body.Length} chars");
+            return;
+        }
         var engine = _engine ?? Engines.Default;
         OpenInNewTab(engine.Home);
         ShowNotice(Strings.AskAiCopied(engine.Name));
@@ -2317,6 +2324,28 @@ internal sealed class MainForm : Form
     {
         if (string.IsNullOrEmpty(text)) return;
         try { Clipboard.SetText(text); } catch (ExternalException) { /* 他アプリがクリップボードを掴んでいる */ }
+    }
+
+    /// <summary>
+    /// クリップボードに書き、読み返して同じかを確かめる。SetClipboard と違って失敗を知らせる。
+    /// 掴まれているときのために、間を置いて何度か試す（最長およそ 2 秒）。
+    /// </summary>
+    private static bool TrySetClipboard(string text, out string why)
+    {
+        why = "";
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                Clipboard.SetDataObject(new DataObject(DataFormats.UnicodeText, text), true, 10, 50);
+                if (Clipboard.GetText() == text) return true;
+                why = $"read back differs (try {attempt})";
+            }
+            catch (ExternalException ex) { why = $"{ex.GetType().Name} 0x{ex.ErrorCode:X8} (try {attempt})"; }
+            catch (ThreadStateException ex) { why = $"{ex.GetType().Name} (try {attempt})"; break; }
+            Thread.Sleep(100);
+        }
+        return false;
     }
 
     private static async void Cut(CoreWebView2 core, string? text)
