@@ -53,6 +53,8 @@ Voyager では `MainForm.OnUiMessage()` の `pickEngine` が必ず `ShowStart()`
   取り込みと書き出しに対応。ファビコンは取得して保持する
 - **ブックマークマネージャー**（専用のタブ）— フォルダの木、検索、複数選択と元に戻す、ドラッグでの
   移動と並べ替え、重複の一覧、押したときだけ動くリンク切れの確認
+- **広告ブロック** — 同梱の uBlock Origin Lite を WebView2 の拡張機能として読み込む。
+  既定でオンで、設定で切れる
 - **ダウンロード** — 既定の保存先を決めるか、毎回確認するかを選べる
 - **AI に聞く** — アドレス欄の右のボタン（またはページの右クリック）で、開いているページの本文を
   「要約」「要点」「質問」の頼みごとと一緒にコピーし、選んでいる AI を新しいタブで開く。貼り付けて送るだけ。
@@ -230,6 +232,7 @@ Voyager はフリーソフトウェアです。Free Software Foundation が公�
 |---|---|
 | Microsoft.Web.WebView2（SDK。`WebView2Loader.dll` を含む） | BSD 3-Clause、© Microsoft Corporation |
 | .NET ランタイム（self-contained ビルド） | MIT、© .NET Foundation and contributors |
+| uBlock Origin Lite（`extensions/ublock-lite`。手を加えずに [uBOL-home](https://github.com/uBlockOrigin/uBOL-home) から取り込み） | GPLv3、© Raymond Hill and contributors |
 
 WebView2 ランタイム本体は Windows の一部で、同梱していません。
 

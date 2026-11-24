@@ -44,6 +44,9 @@ internal sealed class AppSettings
     /// </summary>
     public string DownloadDir { get; set; } = "";
 
+    /// <summary>広告ブロック（同梱の uBlock Origin Lite）を使うか。既定はオン。</summary>
+    public bool AdBlock { get; set; } = true;
+
     /// <summary>ダウンロードのたびに保存先をたずねるか。</summary>
     public bool AskDownloadDir { get; set; }
 

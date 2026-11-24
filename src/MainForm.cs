@@ -365,6 +365,8 @@ internal sealed class MainForm : Form
             {
                 Language = BrowserLanguage(),
                 AllowSingleSignOnUsingOSPrimaryAccount = false,
+                // 広告ブロック（同梱の uBlock Origin Lite）を読み込むため。AdBlock を参照
+                AreBrowserExtensionsEnabled = true,
             };
             Log.Write($"package: {AppPaths.PackageFamilyName ?? "none (MSI)"}");
             Log.Write($"env create: userData={AppSettings.UserDataDir}");
@@ -374,6 +376,7 @@ internal sealed class MainForm : Form
             await _uiView.EnsureCoreWebView2Async(_env);
             var core = _uiView.CoreWebView2;
             PruneHistory(core.Profile);
+            _ = AdBlock.ApplyAsync(core.Profile, _settings.AdBlock);   // 起動は待たせない
             Log.Write($"uiView ready. stage={_content.Width}x{_content.Height} view={_uiView.Width}x{_uiView.Height} visible={_uiView.Visible}");
 
             core.ProcessFailed += (_, a) => Log.Write($"!! ProcessFailed: {a.ProcessFailedKind} {a.Reason}");
@@ -1631,6 +1634,12 @@ internal sealed class MainForm : Form
                 _settings.DownloadDir = "";
                 _settings.Save();
                 Render();
+                return;
+
+            case "setAdBlock":
+                _settings.AdBlock = msg.TryGetProperty("value", out var ab) && ab.ValueKind == JsonValueKind.True;
+                _settings.Save();
+                if (_uiView.CoreWebView2 is { } abCore) _ = AdBlock.ApplyAsync(abCore.Profile, _settings.AdBlock);
                 return;
 
             case "setAskDownloadDir":

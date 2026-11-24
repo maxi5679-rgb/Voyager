@@ -57,6 +57,8 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
 - **A bookmark manager** in its own tab: folder tree, search, multi-select with undo,
   drag to move and reorder, a list of duplicates, and a broken-link check that runs only
   when you start it
+- **Ad blocking** with the bundled uBlock Origin Lite, loaded as a WebView2 extension.
+  On by default; turn it off in Settings
 - **Downloads** — a default folder you can set, or a prompt for every download
 - **Ask AI** — a button right of the address bar (also on the page's context menu) copies the
   open page's text with a request (summarize, key points, or a question) and opens the chosen AI
@@ -238,6 +240,7 @@ The installer also contains components under their own licenses:
 |---|---|
 | Microsoft.Web.WebView2 (the SDK, including `WebView2Loader.dll`) | BSD 3-Clause, © Microsoft Corporation |
 | .NET runtime (self-contained build) | MIT, © .NET Foundation and contributors |
+| uBlock Origin Lite (`extensions/ublock-lite`, unmodified, from [uBOL-home](https://github.com/uBlockOrigin/uBOL-home)) | GPLv3, © Raymond Hill and contributors |
 
 The WebView2 runtime itself is part of Windows and is not included.
 
