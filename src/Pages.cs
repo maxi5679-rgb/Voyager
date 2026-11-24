@@ -362,6 +362,13 @@ internal static class Pages
                 {{E(Strings.AskEveryDownload)}}
               </label>
               <p class="meta">{{Strings.DownloadsNote}}</p>
+              {{(!Idm.Available ? "" : $$"""
+              <label class="check" style="margin-top:12px">
+                <input type="checkbox" {{(s.UseIdm ? "checked" : "")}} data-change='{"type":"setUseIdm"}' />
+                {{E(Strings.UseIdm)}}
+              </label>
+              <p class="meta">{{E(Strings.UseIdmNote)}}</p>
+              """)}}
 
               <h2>{{E(Strings.AdBlockHeading)}}</h2>
               <label class="check">

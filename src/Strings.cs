@@ -363,6 +363,11 @@ internal static class Strings
         T("同梱の uBlock Origin Lite を使います。切り替えは、開いているページを読み込み直すと反映されます。",
           "Uses the bundled uBlock Origin Lite. Reload open pages to see the change.");
 
+    public static string UseIdm => T("ダウンロードを IDM に任せる", "Hand downloads to IDM");
+    public static string UseIdmNote =>
+        T("Internet Download Manager が入っているので出ています。ログインが要るファイルを IDM が落とせないときは、外してください。",
+          "Shown because Internet Download Manager is installed. If IDM can't fetch a file that needs a sign-in, turn this off.");
+
     public static string ContextMenuHeading => T("右クリック", "Right-click");
     public static string PreferPageMenu => T("ページ側のメニューを優先する", "Let the page show its own menu");
     public static string ContextMenuNote =>
