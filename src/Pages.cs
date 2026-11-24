@@ -195,7 +195,7 @@ internal static class Pages
     }
 
     public static string LocalChat(Engine engine, IReadOnlyList<string> models, string selectedModel,
-        IReadOnlyList<LocalChatMessage> messages, string status, bool loading)
+        IReadOnlyList<LocalChatMessage> messages, string status, bool loading, bool loadingModels)
     {
         var options = new StringBuilder();
         foreach (var model in models)
@@ -217,16 +217,16 @@ internal static class Pages
               <p class="lead">{{E(Strings.LocalChatLead)}}</p>
               <div class="choice">
                 <label style="flex:1"><strong>{{E(Strings.LocalModel)}}</strong><br>
-                  <select id="model" class="field" style="margin-top:8px" {{(models.Count == 0 ? "disabled" : "")}}>{{options}}</select>
+                  <select id="model" class="field" style="margin-top:8px" {{(models.Count == 0 || loading || loadingModels ? "disabled" : "")}}>{{options}}</select>
                 </label>
-                <button id="refresh" class="field" style="width:auto;padding:8px 14px;cursor:pointer">{{E(Strings.LocalRefresh)}}</button>
-                <button id="clear" class="field" style="width:auto;padding:8px 14px;cursor:pointer">{{E(Strings.LocalClear)}}</button>
+                <button id="refresh" class="field" style="width:auto;padding:8px 14px;cursor:pointer" {{(loading || loadingModels ? "disabled" : "")}}>{{E(Strings.LocalRefresh)}}</button>
+                <button id="clear" class="field" style="width:auto;padding:8px 14px;cursor:pointer" {{(loading ? "disabled" : "")}}>{{E(Strings.LocalClear)}}</button>
               </div>
               <p class="meta" id="status">{{E(status.Length == 0 ? Strings.LocalReady : status)}}</p>
               <section id="transcript">{{transcript}}</section>
               <form id="chat" class="grid">
-                <textarea id="prompt" class="field" rows="4" placeholder="{{E(Strings.LocalPromptHint)}}"></textarea>
-                <button class="card center" type="submit" {{(loading || models.Count == 0 ? "disabled" : "")}}>{{E(loading ? Strings.LocalThinking : Strings.LocalSend)}}</button>
+                <textarea id="prompt" class="field" rows="4" placeholder="{{E(Strings.LocalPromptHint)}}" {{(loading ? "disabled" : "")}}></textarea>
+                <button class="card center" type="submit" {{(loading || loadingModels || models.Count == 0 ? "disabled" : "")}}>{{E(loading ? Strings.LocalThinking : Strings.LocalSend)}}</button>
               </form>
             </div>
             <style>
@@ -237,18 +237,20 @@ internal static class Pages
               button:disabled,select:disabled{opacity:.55}
             </style>
             <script>
-              const send=m=>window.chrome?.webview?.postMessage(m);
-              document.getElementById('refresh').onclick=()=>send({type:'localChatLoadModels'});
-              document.getElementById('clear').onclick=()=>send({type:'localChatClear'});
-              document.getElementById('model').onchange=e=>send({type:'localChatSetModel',model:e.target.value});
-              document.getElementById('chat').onsubmit=e=>{
+              (()=>{
+                const postLocalMessage=m=>window.chrome?.webview?.postMessage(m);
+                document.getElementById('refresh').onclick=()=>postLocalMessage({type:'localChatLoadModels'});
+                document.getElementById('clear').onclick=()=>postLocalMessage({type:'localChatClear'});
+                document.getElementById('model').onchange=e=>postLocalMessage({type:'localChatSetModel',model:e.target.value});
+                document.getElementById('chat').onsubmit=e=>{
                 e.preventDefault();const p=document.getElementById('prompt');
                 if(p.value.trim()){
-                  send({type:'localChatSend',text:p.value});p.value='';
+                  postLocalMessage({type:'localChatSend',text:p.value});p.value='';
                 }
-              };
-              const t=document.getElementById('transcript');t.scrollTop=t.scrollHeight;
-              const p=document.getElementById('prompt');if(p&&!{{(loading ? "true" : "false")}})p.focus();
+                };
+                const t=document.getElementById('transcript');t.scrollTop=t.scrollHeight;
+                const p=document.getElementById('prompt');if(p&&!{{(loading ? "true" : "false")}})p.focus();
+              })();
             </script>
             """, settingsOpen: false, hasEngine: true);
     }

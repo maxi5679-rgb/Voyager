@@ -15,6 +15,8 @@ internal sealed class MainForm : Form
     private IReadOnlyList<string> _localChatModels = [];
     private string _localChatStatus = "";
     private bool _localChatLoading;
+    private string? _localModelsLoadingEngineId;
+    private Task _localModelsLoadingTask = Task.CompletedTask;
     private BrowserTab _active = null!;
     private Engine? _engine;
     private bool _settingsOpen;
@@ -637,7 +639,8 @@ internal sealed class MainForm : Form
                         : _settingsOpen ? Pages.Settings(_settings, _engine, HistoryKeepDays, _historyNote)
                         : _active.Page == BookmarkManager.PageId ? Pages.Bookmarks()
                         : _engine?.IsLocal == true && (_active.Page == LocalChatPageId || _active.Url is null) ? Pages.LocalChat(_engine, _localChatModels,
-                            LocalModel(_engine), LocalChatHistory(_engine), _localChatStatus, _localChatLoading)
+                            LocalModel(_engine), LocalChatHistory(_engine), _localChatStatus, _localChatLoading,
+                            _localModelsLoadingEngineId == _engine.Id)
                         : _engine is null ? Pages.Picker(_settings)
                         : Pages.Start(_engine)));
         }
@@ -1367,12 +1370,19 @@ internal sealed class MainForm : Form
         _settings.Save();
     }
 
-    private async Task LoadLocalModelsAsync(Engine engine)
+    private Task LoadLocalModelsAsync(Engine engine)
     {
-        if (!engine.IsLocal) return;
+        if (!engine.IsLocal) return Task.CompletedTask;
+        if (_localModelsLoadingEngineId == engine.Id) return _localModelsLoadingTask;
+        _localModelsLoadingEngineId = engine.Id;
+        _localModelsLoadingTask = LoadLocalModelsCoreAsync(engine);
+        return _localModelsLoadingTask;
+    }
+
+    private async Task LoadLocalModelsCoreAsync(Engine engine)
+    {
         if (_engine?.Id == engine.Id)
         {
-            _localChatLoading = true;
             _localChatStatus = Strings.LocalReady;
             Render();
         }
@@ -1404,10 +1414,10 @@ internal sealed class MainForm : Form
         }
         finally
         {
-            if (!IsDisposed && _engine?.Id == engine.Id)
+            if (_localModelsLoadingEngineId == engine.Id)
             {
-                _localChatLoading = false;
-                Render();
+                _localModelsLoadingEngineId = null;
+                if (!IsDisposed && _engine?.Id == engine.Id) Render();
             }
         }
     }
@@ -1743,7 +1753,7 @@ internal sealed class MainForm : Form
                 return;
 
             case "localChatClear":
-                if (_engine?.IsLocal == true)
+                if (_engine?.IsLocal == true && !_localChatLoading)
                 {
                     LocalChatHistory(_engine).Clear();
                     _localChatStatus = "";
