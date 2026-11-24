@@ -8,8 +8,13 @@ namespace Voyager;
 
 internal sealed class MainForm : Form
 {
+    private const string LocalChatPageId = "local-chat";
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly List<BrowserTab> _tabs = [];
+    private readonly Dictionary<string, List<LocalChatMessage>> _localChats = new(StringComparer.Ordinal);
+    private IReadOnlyList<string> _localChatModels = [];
+    private string _localChatStatus = "";
+    private bool _localChatLoading;
     private BrowserTab _active = null!;
     private Engine? _engine;
     private bool _settingsOpen;
@@ -332,7 +337,12 @@ internal sealed class MainForm : Form
 
         // 中身を持たないタブの題名（「新しいタブ」）も入れ直す。
         foreach (var t in _tabs)
-            if (t.Url is null) t.Title = t.Page == BookmarkManager.PageId ? Strings.BookmarkManager : Strings.NewTab;
+            if (t.Url is null) t.Title = t.Page switch
+            {
+                BookmarkManager.PageId => Strings.BookmarkManager,
+                LocalChatPageId when _engine?.IsLocal == true => _engine.Name,
+                _ => Strings.NewTab,
+            };
 
         var omni = _omni.Width;
         LayoutTabs();
@@ -426,6 +436,7 @@ internal sealed class MainForm : Form
             };
             RestoreLastTabs();
             Render();
+            if (_engine?.IsLocal == true) _ = LoadLocalModelsAsync(_engine);
         }
         catch (Exception ex)
         {
@@ -625,6 +636,8 @@ internal sealed class MainForm : Form
                 LogHtml(_aboutOpen ? Pages.About(_env?.BrowserVersionString)
                         : _settingsOpen ? Pages.Settings(_settings, _engine, HistoryKeepDays, _historyNote)
                         : _active.Page == BookmarkManager.PageId ? Pages.Bookmarks()
+                        : _engine?.IsLocal == true && (_active.Page == LocalChatPageId || _active.Url is null) ? Pages.LocalChat(_engine, _localChatModels,
+                            LocalModel(_engine), LocalChatHistory(_engine), _localChatStatus, _localChatLoading)
                         : _engine is null ? Pages.Picker(_settings)
                         : Pages.Start(_engine)));
         }
@@ -1283,7 +1296,20 @@ internal sealed class MainForm : Form
                 return;
 
             case Purposes.Image:
-                Navigate(_active, Purposes.EngineFor(_settings, Purposes.Image).Ask(Strings.ImagePrompt(text)), focusPage: true);
+                var imageEngine = Purposes.EngineFor(_settings, Purposes.Image);
+                if (imageEngine.CopyImagePrompt)
+                {
+                    if (!TrySetClipboard(Strings.ImagePrompt(text), out var imageClipboardError))
+                    {
+                        ShowNotice(Strings.LocalImagePromptCopyFailed);
+                        Log.Write($"local image: clipboard failed ({imageClipboardError})");
+                        return;
+                    }
+                    Navigate(_active, imageEngine.Home, focusPage: true);
+                    ShowNotice(Strings.LocalImagePromptCopied(imageEngine.Name));
+                }
+                else
+                    Navigate(_active, imageEngine.Ask(Strings.ImagePrompt(text)), focusPage: true);
                 return;
 
             case Purposes.Video:
@@ -1296,8 +1322,130 @@ internal sealed class MainForm : Form
                 return;
 
             default:
+                if (_engine.IsLocal)
+                {
+                    if (_active.Url is not null || _active.Page != LocalChatPageId) OpenLocalChatTab();
+                    _ = SendLocalChatAsync(text);
+                    return;
+                }
                 Navigate(_active, _engine.Ask(text), focusPage: true);
                 return;
+        }
+    }
+
+    private void OpenLocalChatTab()
+    {
+        var tab = new BrowserTab { Page = LocalChatPageId, Title = _engine?.Name ?? "Local AI" };
+        _tabs.Add(tab);
+        _active = tab;
+        CloseInternalPages();
+        RebuildTabStrip();
+        Render();
+    }
+
+    private List<LocalChatMessage> LocalChatHistory(Engine engine)
+    {
+        if (!_localChats.TryGetValue(engine.Id, out var messages))
+            _localChats[engine.Id] = messages = [];
+        return messages;
+    }
+
+    private string LocalModel(Engine engine) => engine.Id switch
+    {
+        "ollama" => _settings.OllamaModel ?? "",
+        "lmstudio" => _settings.LmStudioModel ?? "",
+        _ => "",
+    };
+
+    private void SaveLocalModel(Engine engine, string model)
+    {
+        switch (engine.Id)
+        {
+            case "ollama": _settings.OllamaModel = model; break;
+            case "lmstudio": _settings.LmStudioModel = model; break;
+        }
+        _settings.Save();
+    }
+
+    private async Task LoadLocalModelsAsync(Engine engine)
+    {
+        if (!engine.IsLocal) return;
+        if (_engine?.Id == engine.Id)
+        {
+            _localChatLoading = true;
+            _localChatStatus = Strings.LocalReady;
+            Render();
+        }
+        try
+        {
+            var models = await LocalChatClient.GetModelsAsync(engine);
+            if (_engine?.Id == engine.Id)
+            {
+                _localChatModels = models;
+                if (models.Count == 0)
+                    _localChatStatus = Strings.LocalNoModels(engine.Name);
+                else
+                {
+                    var model = LocalModel(engine);
+                    if (!models.Contains(model, StringComparer.OrdinalIgnoreCase))
+                        SaveLocalModel(engine, models[0]);
+                    _localChatStatus = "";
+                }
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            if (_engine?.Id == engine.Id)
+            {
+                _localChatModels = [];
+                _localChatStatus = Strings.LocalServerUnavailable(engine.Name);
+            }
+            Log.Write($"local ai: model list failed ({engine.Id}): {ex.GetType().Name} {ex.Message}");
+        }
+        finally
+        {
+            if (!IsDisposed && _engine?.Id == engine.Id)
+            {
+                _localChatLoading = false;
+                Render();
+            }
+        }
+    }
+
+    private async Task SendLocalChatAsync(string text)
+    {
+        var engine = _engine;
+        if (engine?.IsLocal != true || _localChatLoading) return;
+        var model = LocalModel(engine);
+        if (string.IsNullOrWhiteSpace(model) || !_localChatModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+        {
+            await LoadLocalModelsAsync(engine);
+            model = LocalModel(engine);
+            if (string.IsNullOrWhiteSpace(model) || !_localChatModels.Contains(model, StringComparer.OrdinalIgnoreCase)) return;
+        }
+
+        var conversation = LocalChatHistory(engine);
+        conversation.Add(new LocalChatMessage("user", text));
+        if (conversation.Count > 20) conversation.RemoveRange(0, conversation.Count - 20);
+        _localChatLoading = true;
+        _localChatStatus = Strings.LocalThinking;
+        Render();
+        try
+        {
+            var reply = await LocalChatClient.ChatAsync(engine, model, conversation);
+            conversation.Add(new LocalChatMessage("assistant", reply));
+            _localChatStatus = "";
+            Log.Write($"local ai: {engine.Id}/{model} replied ({reply.Length} chars)");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            _localChatStatus = Strings.LocalRequestFailed(ex.Message);
+            Log.Write($"local ai: request failed ({engine.Id}/{model}): {ex.GetType().Name} {ex.Message}");
+        }
+        finally
+        {
+            _localChatLoading = false;
+            if (!IsDisposed) Render();
         }
     }
 
@@ -1422,6 +1570,15 @@ internal sealed class MainForm : Form
             ? $"{Strings.AskAiQuestionIntro}\n\n{page}\n\n{request}"
             : $"{request}\n\n{page}";
 
+        if (_engine?.IsLocal == true)
+        {
+            var localEngine = _engine;
+            OpenLocalChatTab();
+            _ = SendLocalChatAsync(text);
+            Log.Write($"ask ai: {kind} {body.Length} chars{(cut ? " (cut)" : "")} -> local {localEngine.Id}");
+            return;
+        }
+
         // 書けたかを読み返して確かめる。他のアプリがクリップボードを掴んでいると黙って失敗し、
         // 前にコピーしていたもの（アドレス欄の URL など）が残ったまま AI を開いてしまう。
         if (!TrySetClipboard(text, out var why))
@@ -1468,6 +1625,9 @@ internal sealed class MainForm : Form
         CloseInternalPages();
         switch (_settings.HomeKind)
         {
+            case "ai" when _engine?.IsLocal == true:
+                ShowStart(_active);
+                return;
             case "ai" when _engine is not null:
                 Navigate(_active, _engine.Home);
                 return;
@@ -1562,6 +1722,33 @@ internal sealed class MainForm : Form
                 // ★ ここが Chromium 版のバグ箇所。前のページを残したまま再描画すると
                 //    「選び直したのに前の AI に戻る」ので、タブを必ずスタート画面へ戻す。
                 ShowStart(_active);
+                if (picked.IsLocal) _ = LoadLocalModelsAsync(picked);
+                return;
+
+            case "localChatLoadModels":
+                if (_engine?.IsLocal == true) _ = LoadLocalModelsAsync(_engine);
+                return;
+
+            case "localChatSetModel":
+                if (_engine?.IsLocal == true && Str("model") is { } selected &&
+                    _localChatModels.Contains(selected, StringComparer.OrdinalIgnoreCase))
+                {
+                    SaveLocalModel(_engine, selected);
+                    Render();
+                }
+                return;
+
+            case "localChatSend":
+                if (Str("text") is { } localText) _ = SendLocalChatAsync(localText);
+                return;
+
+            case "localChatClear":
+                if (_engine?.IsLocal == true)
+                {
+                    LocalChatHistory(_engine).Clear();
+                    _localChatStatus = "";
+                    Render();
+                }
                 return;
 
             // --- ページ内メニューからの操作 ---
@@ -1696,6 +1883,7 @@ internal sealed class MainForm : Form
                 if (_settings.RememberEngine) _settings.EngineId = _engine?.Id;
                 _settings.Save();
                 Render();
+                if (_engine?.IsLocal == true) _ = LoadLocalModelsAsync(_engine);
                 return;
         }
     }

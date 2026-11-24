@@ -16,7 +16,7 @@ build (~200 MB) and a thin WebView2 build (v0.2.0).
 
 The address bar takes either a URL or a question. A URL opens as you would expect; anything
 else is sent to whichever AI you have selected (Grok, ChatGPT, Claude, Gemini,
-Perplexity, Copilot). A handful of words — `google`, `ぐぐる`, `ようつべ` and friends — open the
+Perplexity, Copilot, Ollama, or LM Studio). A handful of words — `google`, `ぐぐる`, `ようつべ` and friends — open the
 site instead of searching for it.
 
 Everything else is an ordinary browser: tabs that keep their state, a bookmarks bar and
@@ -60,9 +60,10 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
 - **Ad blocking** with the bundled uBlock Origin Lite, loaded as a WebView2 extension.
   On by default; turn it off in Settings
 - **Downloads** — a default folder you can set, or a prompt for every download
-- **Ask AI** — a button right of the address bar (also on the page's context menu) copies the
-  open page's text with a request (summarize, key points, or a question) and opens the chosen AI
-  in a new tab; paste and send. The page is read only when you press it; nothing runs in the background
+- **Ask AI** — a button right of the address bar (also on the page's context menu) sends the open
+  page's text with a request (summarize, key points, or a question) to the chosen AI. Web AIs open
+  in a new tab for paste-and-send; Ollama and LM Studio receive it directly through their local API.
+  The page is read only when you press it; nothing runs in the background
   (see [Using Ask AI](#using-ask-ai))
 - **Context menus** drawn by the app, in the app's own colors, including
   save / copy / copy-address for images
@@ -92,6 +93,17 @@ Have an AI summarize the page you are reading, or ask it questions about it.
 - Long pages are cut at 100,000 characters, with a note saying so at the end.
 - It doesn't work on Voyager's own pages (start, settings) or on pages without text.
 - If Voyager says it couldn't copy, another app is using the clipboard. Press it again.
+
+## Local AI and image generation
+
+- **Ollama** — choose it on Voyager's AI picker. If Ollama is running and has models installed, choose a model and chat.
+- **LM Studio** — start the local server from its Developer screen, then choose LM Studio in Voyager.
+  The default address is `http://localhost:1234`.
+- Questions and page text are sent to the selected local AI server on this PC. The chat is cleared when Voyager closes.
+- **ComfyUI** — choose **Image** from the use selector left of the address bar, then select ComfyUI.
+  With ComfyUI running, submitting a prompt copies it and opens ComfyUI. Paste the prompt into its input and start generation there.
+  The default address is `http://127.0.0.1:8188`.
+- **Stable Diffusion WebUI** — select it as the image destination while WebUI is running. Voyager copies the prompt and opens the WebUI; paste the prompt and start generation there. The default address is `http://127.0.0.1:7860`.
 
 ## Layout
 
