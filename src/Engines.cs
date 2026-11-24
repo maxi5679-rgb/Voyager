@@ -1,7 +1,10 @@
 namespace Voyager;
 
-internal sealed record Engine(string Id, string Name, string Maker, string Home, string AskFormat)
+internal sealed record Engine(string Id, string Name, string Maker, string Home, string AskFormat,
+    string? ApiBase = null, bool ImageOnly = false, bool CopyImagePrompt = false)
 {
+    public bool IsLocal => ApiBase is not null;
+
     /// <summary>質問文を、その AI のクエリ付き URL に変換する。</summary>
     public string Ask(string text)
     {
@@ -21,6 +24,10 @@ internal static class Engines
         new("gemini",     "Gemini",     "Google",     "https://gemini.google.com/app",      "https://gemini.google.com/app?q={0}"),
         new("perplexity", "Perplexity", "Perplexity", "https://www.perplexity.ai/",         "https://www.perplexity.ai/search?q={0}"),
         new("copilot",    "Copilot",    "Microsoft",  "https://copilot.microsoft.com/",     "https://copilot.microsoft.com/?q={0}"),
+        new("ollama",     "Ollama",     "Local",       "",                                 "", "http://localhost:11434/v1"),
+        new("lmstudio",   "LM Studio",  "Local",       "",                                 "", "http://localhost:1234/v1"),
+        new("sd-webui",   "Stable Diffusion WebUI", "Local", "http://127.0.0.1:7860/", "", null, ImageOnly: true, CopyImagePrompt: true),
+        new("comfyui",    "ComfyUI",    "Local",       "http://127.0.0.1:8188/",          "", null, ImageOnly: true, CopyImagePrompt: true),
     ];
 
     public static Engine? ById(string? id) =>

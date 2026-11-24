@@ -12,6 +12,8 @@ internal sealed class AppSettings
     public string HomeUrl { get; set; } = "";
     public bool RememberEngine { get; set; } = true;
     public string? EngineId { get; set; }
+    public string? OllamaModel { get; set; }
+    public string? LmStudioModel { get; set; }
 
     /// <summary>
     /// 用途ごとの送り先。キーは Purposes の id（search / image / video）、値は AI か動画サービスの id。

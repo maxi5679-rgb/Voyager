@@ -265,6 +265,24 @@ internal static class Strings
     public static string StartLead => T("アドレスを貼るか、下のサイトを開きます。質問は選んだ AI 本体に送ります。",
                                         "Paste an address, or pick a site below. A question goes to the AI you chose.");
     public static string OpenEngine(string name) => T($"{name} を開く", $"Open {name}");
+    public static string LocalOnly => T("この会話はこのPC上で処理します", "This chat runs on this PC");
+    public static string LocalChatLead => T("起動中のローカルAIサーバーからモデルを選んで質問します。", "Choose a model from your running local AI server and chat with it.");
+    public static string LocalModel => T("モデル", "Model");
+    public static string LocalRefresh => T("モデル一覧を更新", "Refresh models");
+    public static string LocalClear => T("会話を消す", "Clear chat");
+    public static string LocalPromptHint => T("ローカルモデルへの質問", "Ask your local model");
+    public static string LocalSend => T("送信", "Send");
+    public static string LocalThinking => T("考え中…", "Thinking…");
+    public static string LocalReady => T("モデル一覧を読み込んでいます…", "Loading available models…");
+    public static string LocalYou => T("あなた", "You");
+    public static string LocalServerUnavailable(string ai) =>
+        T($"{ai} に接続できません。アプリが起動していて、ローカルサーバーが利用できるか確認してください。",
+          $"Couldn't connect to {ai}. Make sure it is running and its local server is available.");
+    public static string LocalNoModels(string ai) =>
+        T($"{ai} からモデルが見つかりません。モデルをダウンロードして、もう一度更新してください。",
+          $"No models were found in {ai}. Download a model, then refresh the list.");
+    public static string LocalRequestFailed(string detail) =>
+        T($"ローカルAIから返事を受け取れませんでした。\n{detail}", $"The local AI did not return a reply.\n{detail}");
 
     public static string AboutTitle => T("Voyager について", "About Voyager");
     public static string Version(string v) => T($"バージョン {v}", $"Version {v}");
@@ -319,6 +337,12 @@ internal static class Strings
     public static string PurposeSettings => T("用途ごとの AI を設定する", "Set the AI for each use");
     public static string ImagePrompt(string text) =>
         T($"次の内容で画像を作ってください：{text}", $"Create an image of: {text}");
+    public static string LocalImagePromptCopied(string name) =>
+        T($"画像の指示をコピーしました。{name}の入力欄に貼り付けて生成してください。",
+          $"The image prompt is copied. Paste it into {name} and generate the image.");
+    public static string LocalImagePromptCopyFailed =>
+        T("画像の指示をコピーできませんでした。もう一度お試しください。",
+          "Couldn't copy the image prompt. Please try again.");
     public static string VideoCopied(string name) =>
         T($"指示文をコピーしました。{name} の入力欄に貼り付けてください（Ctrl+V）。",
           $"Your prompt is on the clipboard. Paste it into {name}'s prompt box (Ctrl+V).");
@@ -335,13 +359,13 @@ internal static class Strings
         T("アドレス欄の左のボタンで用途を切り替えると、質問がここで決めた先に送られます。<br>"
           + "AI ごとに得意なこと、無料で使える量、ログインが要るかどうかが違い、同じ質問でも答えは変わります。"
           + "画像や動画は、無料プランでは作れない、または回数に限りがあるサービスがほとんどです。<br>"
-          + "動画のサービスは URL で指示文を受け取れないので、Voyager が指示文をクリップボードにコピーしてからサイトを開きます。"
+          + "動画のサービスやローカル画像ツールは URL で指示文を受け取れないので、Voyager が指示文をクリップボードにコピーしてから開きます。"
           + "開いた先の入力欄に貼り付けてください。",
           "Switch the use with the button left of the address bar, and your question goes where you set here.<br>"
           + "Each AI has its own strengths, free limits and sign-in rules, so the same question can get different answers. "
           + "Most services limit or charge for images and video on free plans.<br>"
-          + "Video services can't take a prompt through the address, so Voyager copies your prompt to the clipboard "
-          + "and opens the site. Paste it into the prompt box there.");
+          + "Video services and local image tools can't take a prompt through the address, so Voyager copies your prompt to the clipboard "
+          + "and opens the tool. Paste it into the prompt box there.");
 
     public static string DownloadsHeading => T("ダウンロード", "Downloads");
     public static string SaveLocation => T("保存先", "Save to");

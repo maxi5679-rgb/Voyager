@@ -124,7 +124,7 @@ internal static class Pages
             else
             {
                 var chosen = Purposes.EngineFor(s, id).Id;
-                foreach (var e in Engines.All)
+                foreach (var e in Engines.All.Where(e => id == Purposes.Image ? e.ImageOnly || !e.IsLocal : !e.ImageOnly && !e.IsLocal))
                     picks.Append($"<option value=\"{e.Id}\"{(e.Id == chosen ? " selected" : "")}>{E(e.Name)}</option>");
             }
             var openButton = withOpen
@@ -145,7 +145,7 @@ internal static class Pages
     public static string Picker(AppSettings s)
     {
         var cards = new StringBuilder();
-        foreach (var e in Engines.All)
+        foreach (var e in Engines.All.Where(e => !e.ImageOnly))
         {
             cards.Append($$"""
                 <button class="card" data-msg='{"type":"pickEngine","id":"{{e.Id}}"}'>
@@ -191,6 +191,67 @@ internal static class Pages
                 <div class="grid three">{{sites}}</div>
               </div>
             </div>
+            """, settingsOpen: false, hasEngine: true);
+    }
+
+    public static string LocalChat(Engine engine, IReadOnlyList<string> models, string selectedModel,
+        IReadOnlyList<LocalChatMessage> messages, string status, bool loading, bool loadingModels)
+    {
+        var options = new StringBuilder();
+        foreach (var model in models)
+            options.Append($"<option value=\"{E(model)}\"{(model == selectedModel ? " selected" : "")}>{E(model)}</option>");
+
+        var transcript = new StringBuilder();
+        foreach (var message in messages)
+        {
+            var role = message.Role == "user" ? Strings.LocalYou : engine.Name;
+            transcript.Append($$"""
+                <article class="message"><strong>{{E(role)}}</strong><pre>{{E(message.Content)}}</pre></article>
+                """);
+        }
+
+        return Shell($"{engine.Name} - Voyager", $$"""
+            <div class="panel">
+              <p class="kicker">{{E(Strings.LocalOnly)}}</p>
+              <h1>{{E(engine.Name)}}</h1>
+              <p class="lead">{{E(Strings.LocalChatLead)}}</p>
+              <div class="choice">
+                <label style="flex:1"><strong>{{E(Strings.LocalModel)}}</strong><br>
+                  <select id="model" class="field" style="margin-top:8px" {{(models.Count == 0 || loading || loadingModels ? "disabled" : "")}}>{{options}}</select>
+                </label>
+                <button id="refresh" class="field" style="width:auto;padding:8px 14px;cursor:pointer" {{(loading || loadingModels ? "disabled" : "")}}>{{E(Strings.LocalRefresh)}}</button>
+                <button id="clear" class="field" style="width:auto;padding:8px 14px;cursor:pointer" {{(loading ? "disabled" : "")}}>{{E(Strings.LocalClear)}}</button>
+              </div>
+              <p class="meta" id="status">{{E(status.Length == 0 ? Strings.LocalReady : status)}}</p>
+              <section id="transcript">{{transcript}}</section>
+              <form id="chat" class="grid">
+                <textarea id="prompt" class="field" rows="4" placeholder="{{E(Strings.LocalPromptHint)}}" {{(loading ? "disabled" : "")}}></textarea>
+                <button class="card center" type="submit" {{(loading || loadingModels || models.Count == 0 ? "disabled" : "")}}>{{E(loading ? Strings.LocalThinking : Strings.LocalSend)}}</button>
+              </form>
+            </div>
+            <style>
+              textarea.field{width:100%;box-sizing:border-box;resize:vertical;font:inherit;color:inherit;background:var(--card,#20242a);border:1px solid #444;border-radius:8px;padding:12px}
+              #transcript{display:grid;gap:12px;margin:18px 0;max-height:48vh;overflow:auto}
+              .message{background:rgba(128,128,128,.12);border-radius:10px;padding:12px}
+              .message pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;margin:8px 0 0}
+              button:disabled,select:disabled{opacity:.55}
+            </style>
+            <script>
+              (()=>{
+                const postLocalMessage=m=>window.chrome?.webview?.postMessage(m);
+                document.getElementById('refresh').onclick=()=>postLocalMessage({type:'localChatLoadModels'});
+                document.getElementById('clear').onclick=()=>postLocalMessage({type:'localChatClear'});
+                document.getElementById('model').onchange=e=>postLocalMessage({type:'localChatSetModel',model:e.target.value});
+                document.getElementById('chat').onsubmit=e=>{
+                e.preventDefault();const p=document.getElementById('prompt');
+                if(p.value.trim()){
+                  postLocalMessage({type:'localChatSend',text:p.value});p.value='';
+                }
+                };
+                const t=document.getElementById('transcript');t.scrollTop=t.scrollHeight;
+                const p=document.getElementById('prompt');if(p&&!{{(loading ? "true" : "false")}})p.focus();
+              })();
+            </script>
             """, settingsOpen: false, hasEngine: true);
     }
 
@@ -291,7 +352,7 @@ internal static class Pages
         }
 
         var options = new StringBuilder($"<option value=\"\">{E(Strings.ChooseAtStartup)}</option>");
-        foreach (var e in Engines.All)
+        foreach (var e in Engines.All.Where(e => !e.ImageOnly))
         {
             var sel = current?.Id == e.Id ? " selected" : "";
             options.Append($"<option value=\"{e.Id}\"{sel}>{E(e.Name)}</option>");
