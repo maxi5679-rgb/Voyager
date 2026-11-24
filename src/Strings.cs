@@ -396,6 +396,9 @@ internal static class Strings
     public static string DataNote => T("ログイン状態と Cookie は次の場所に保存されます。",
                                        "Logins and cookies are kept here.");
     public static string AboutButton => T("Voyager について", "About Voyager");
+    public static string MissionLogButton => T("航海日誌（開発の記録）", "Mission log (in Japanese)");
+    public static string MissionLogMissing => T("航海日誌のファイルが見つかりませんでした。",
+                                                "The mission log file was not found.");
 
     public static string AboutImageAlt =>
         T("星間空間へ出るボイジャー1号の想像図",

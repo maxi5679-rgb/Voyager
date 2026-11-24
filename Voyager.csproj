@@ -48,6 +48,8 @@
     <!-- About 画面の想像図。ソースに base64 で焼き込まず publish に 1 ファイルとして置く。
          インストーラは publish\** をまるごと拾うので、wxs 側の追記は要らない。 -->
     <Content Include="assets\voyager.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 航海日誌（開発の記録、公開用）。About の「航海日誌」ボタンから Pages.MissionLog が読む。 -->
+    <Content Include="assets\mission-log.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
