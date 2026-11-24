@@ -85,6 +85,9 @@ internal sealed class MainForm : Form
     /// <summary>「Voyager について」を開いているか。</summary>
     private bool _aboutOpen;
 
+    /// <summary>「航海日誌」（開発の記録）を開いているか。</summary>
+    private bool _logOpen;
+
     /// <summary>いま出している右クリックメニュー。ページが動いたら畳むために持っておく。</summary>
     private ContextMenuStrip? _menu;
 
@@ -609,7 +612,7 @@ internal sealed class MainForm : Form
     {
         if (_uiView.CoreWebView2 is null) return;
 
-        var showInternal = _settingsOpen || _aboutOpen || _engine is null || _active.Url is null || _active.Page is not null;
+        var showInternal = _settingsOpen || _aboutOpen || _logOpen || _engine is null || _active.Url is null || _active.Page is not null;
 
         foreach (var t in _tabs)
             if (t.View is not null)
@@ -622,7 +625,8 @@ internal sealed class MainForm : Form
             Log.Write($"render internal: settings={_settingsOpen} engine={_engine?.Id ?? "-"} url={Log.Url(_active.Url)} " +
                       $"view={_uiView.Width}x{_uiView.Height} visible={_uiView.Visible} parent={_uiView.Parent?.Name ?? "?"}");
             _uiView.CoreWebView2.NavigateToString(
-                LogHtml(_aboutOpen ? Pages.About(_env?.BrowserVersionString)
+                LogHtml(_logOpen ? Pages.MissionLog()
+                        : _aboutOpen ? Pages.About(_env?.BrowserVersionString)
                         : _settingsOpen ? Pages.Settings(_settings, _engine, HistoryKeepDays, _historyNote)
                         : _active.Page == BookmarkManager.PageId ? Pages.Bookmarks()
                         : _engine is null ? Pages.Picker(_settings)
@@ -1345,7 +1349,7 @@ internal sealed class MainForm : Form
     /// 本文を読めるページを開いているか。内部ページ・設定画面・まだ何も開いていないタブでは押せない。
     /// </summary>
     private bool CanAskAboutPage() =>
-        !_settingsOpen && !_aboutOpen && _engine is not null && _active.Page is null &&
+        !_settingsOpen && !_aboutOpen && !_logOpen && _engine is not null && _active.Page is null &&
         _active.View?.CoreWebView2 is not null &&
         Uri.TryCreate(_active.Url, UriKind.Absolute, out var u) && u.Scheme is "http" or "https";
 
@@ -1517,6 +1521,14 @@ internal sealed class MainForm : Form
         Render();
     }
 
+    /// <summary>航海日誌は「Voyager について」から開き、閉じると「Voyager について」へ戻る。</summary>
+    private void OpenMissionLog()
+    {
+        CloseInternalPages();
+        _logOpen = true;
+        Render();
+    }
+
     /// <summary>
     /// 内部ページを全部閉じる。1 つずつ false にして回ると、画面が増えたときに
     /// 必ずどこかで付け忘れる。閉じる処理はここ 1 か所だけにしておく。
@@ -1525,6 +1537,7 @@ internal sealed class MainForm : Form
     {
         _settingsOpen = false;
         _aboutOpen = false;
+        _logOpen = false;
     }
 
     // ---------------------------------------------------------------- 内部ページからのメッセージ
@@ -1583,6 +1596,10 @@ internal sealed class MainForm : Form
 
             case "about":
                 ToggleAbout();
+                return;
+
+            case "missionLog":
+                OpenMissionLog();
                 return;
 
             case "toggleSettings":
@@ -2529,6 +2546,14 @@ internal sealed class MainForm : Form
     /// </summary>
     private void InternalBack()
     {
+        if (_logOpen)
+        {
+            // 航海日誌からの「戻る」は、開いた元の「Voyager について」へ
+            CloseInternalPages();
+            _aboutOpen = true;
+            Render();
+            return;
+        }
         if (_settingsOpen || _aboutOpen)
         {
             CloseInternalPages();
@@ -2562,7 +2587,7 @@ internal sealed class MainForm : Form
     }
 
     private bool ManagerShowing =>
-        _active.Page == BookmarkManager.PageId && !_settingsOpen && !_aboutOpen && _uiView.CoreWebView2 is not null;
+        _active.Page == BookmarkManager.PageId && !_settingsOpen && !_aboutOpen && !_logOpen && _uiView.CoreWebView2 is not null;
 
     private void PostToManager(object message) => PostJsonToManager(JsonSerializer.Serialize(message));
 

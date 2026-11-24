@@ -226,6 +226,45 @@ internal static class Pages
         }
     }
 
+    /// <summary>
+    /// 航海日誌（開発の記録）。publish した assets\mission-log.html をそのまま出す。
+    /// 中身は日本語だけ。ページ自体は外と通信しない（字体も Windows のものを使う）。
+    /// 上に「Voyager について」へ戻るボタンを差し込む。読めなければその旨だけ出す。
+    /// </summary>
+    public static string MissionLog()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "assets", "mission-log.html");
+            if (File.Exists(path))
+            {
+                var html = File.ReadAllText(path);
+                var back = $$"""
+                    <div class="wrap" style="padding-bottom:0">
+                      <button type="button" onclick="chrome.webview.postMessage({type:'about'})"
+                              style="font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;border:1px solid var(--rule);background:var(--panel);color:var(--ink);cursor:pointer">
+                        ← {{E(Strings.AboutTitle)}}
+                      </button>
+                    </div>
+                    """;
+                var at = html.IndexOf("<div class=\"wrap\">", StringComparison.Ordinal);
+                return at < 0 ? html : html.Insert(at, back);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"mission log: not shown ({ex.GetType().Name})");
+        }
+        return Shell(Strings.MissionLogButton, $$"""
+            <div class="panel">
+              <p class="lead">{{E(Strings.MissionLogMissing)}}</p>
+              <div class="grid" style="margin-top:28px">
+                <button class="card center" data-msg='{"type":"about"}'>{{E(Strings.AboutTitle)}}</button>
+              </div>
+            </div>
+            """, settingsOpen: false, hasEngine: false);
+    }
+
     public static string About(string? browserVersion)
     {
         var exe = Environment.ProcessPath ?? AppContext.BaseDirectory;
@@ -258,6 +297,7 @@ internal static class Pages
 
               <div class="grid" style="margin-top:28px">
                 <button class="card center" data-msg='{"type":"toggleSettings"}'>{{E(Strings.ToSettings)}}</button>
+                <button class="card center" data-msg='{"type":"missionLog"}'>{{E(Strings.MissionLogButton)}}</button>
               </div>
 
               <p class="meta" style="margin-top:32px">

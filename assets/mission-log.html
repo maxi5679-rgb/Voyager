@@ -1,0 +1,629 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Voyager 航海日誌</title>
+<style>
+/* Layout: a mission log — one narrow reading column; chapters carry entries on a left time rail; two reference tables at the end. */
+:root {
+  --bg: #f6f4ee;
+  --panel: #ffffff;
+  --ink: #17202e;
+  --muted: #5d6573;
+  --rule: #ddd8cc;
+  --gold: #9a6b12;       /* Golden Record */
+  --gold-soft: #f1e5c8;
+  --fix: #2f6b4f;
+  --bug: #a2412d;
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1420; --panel: #151d2c; --ink: #e7e9ee; --muted: #9aa3b4; --rule: #263248;
+    --gold: #e0b45a; --gold-soft: #2b2617; --fix: #7cc5a0; --bug: #ef8f78; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1420; --panel: #151d2c; --ink: #e7e9ee; --muted: #9aa3b4; --rule: #263248;
+  --gold: #e0b45a; --gold-soft: #2b2617; --fix: #7cc5a0; --bug: #ef8f78; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.75; }
+.wrap { max-width: 860px; margin: 0 auto; padding-inline: 20px; padding-block: 48px 80px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.35; margin: 0; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+
+header { display: grid; gap: 14px; padding-bottom: 28px; border-bottom: 1px solid var(--rule); }
+header h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 900; letter-spacing: .02em; }
+header h1 span { color: var(--gold); }
+header p { margin: 0; color: var(--muted); max-width: 62ch; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 6px; }
+.facts div { display: grid; }
+.facts b { font-family: var(--font-mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.facts small { color: var(--muted); font-size: 12px; }
+
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; padding-block: 18px; font-size: 13px; }
+nav.toc a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--rule); }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--gold); border-color: var(--gold); outline: none; }
+
+section.chapter { padding-top: 40px; }
+.chapter > header.ch { border: 0; padding: 0 0 6px; gap: 4px; }
+.chapter h2 { font-size: 22px; font-weight: 700; }
+.chapter .lead { color: var(--muted); margin: 6px 0 0; max-width: 64ch; }
+
+ol.log { list-style: none; margin: 18px 0 0; padding: 0 0 0 22px; border-left: 2px solid var(--rule); display: grid; gap: 22px; }
+ol.log > li { position: relative; min-width: 0; }
+ol.log > li::before { content: ""; position: absolute; left: -29px; top: 9px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--gold); }
+ol.log > li.side::before { border-style: dashed; border-color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.meta .when { font-family: var(--font-mono); }
+.meta .hash { font-family: var(--font-mono); color: var(--gold); }
+.builds { font-family: var(--font-mono); font-size: 12px; padding: 0 8px; border-radius: 999px; background: var(--gold-soft); color: var(--ink); white-space: nowrap; }
+.log h3 { font-size: 16.5px; font-weight: 700; margin-top: 2px; }
+.log ul { margin: 6px 0 0; padding-left: 1.2em; }
+.log ul li { margin: 2px 0; }
+.tag { display: inline-block; font-size: 11.5px; padding: 0 7px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; border: 1px solid currentColor; }
+.tag.bug { color: var(--bug); }
+.tag.fix { color: var(--fix); }
+.incident { margin-top: 4px; padding: 12px 14px; border: 1px solid var(--bug); border-radius: 8px; background: var(--panel); }
+.incident p { margin: 6px 0 0; }
+
+.prehistory { margin-top: 18px; padding: 16px 18px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+.prehistory p { margin: 0 0 6px; }
+.prehistory p:last-child { margin: 0; }
+
+section.ref { padding-top: 48px; }
+section.ref h2 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+section.ref .lead { color: var(--muted); margin: 0 0 14px; max-width: 64ch; }
+.tablebox { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13.5px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font-weight: 700; font-size: 12px; color: var(--muted); letter-spacing: .04em; background: var(--bg); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.v { font-family: var(--font-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.h { font-family: var(--font-mono); color: var(--gold); white-space: nowrap; }
+td.none { color: var(--muted); }
+
+.notes { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13.5px; }
+.notes h2 { font-size: 15px; color: var(--ink); margin-bottom: 6px; }
+.notes ul { margin: 0; padding-left: 1.2em; }
+
+@media (max-width: 520px) {
+  body { font-size: 14.5px; }
+  ol.log { padding-left: 18px; }
+  ol.log > li::before { left: -25px; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">V'Ger mission log · 2026-09-16 → 2026-11-24</div>
+    <h1>Voyager <span>航海日誌</span></h1>
+    <p>Voyager の開発の記録です。Git に入る前のビルド用スクリプト、Git のコミット、GitHub の PR、Microsoft Store への申請の記録を突き合わせて、どのビルドで何が入り、どんな不具合がいつ見つかり、どう直ったかを時系列に並べました。</p>
+    <div class="facts">
+      <div><b>9</b><small>PR（取り込み 7・閉じた 1・未マージ 1）</small></div>
+      <div><b>70日</b><small>9/16 の README から 11/24 まで</small></div>
+      <div><b>1.0.0 → 1.1.31</b><small>ビルド番号</small></div>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="目次">
+    <a href="#pre">前史：AI 専用ブラウザ</a>
+    <a href="#ch0">9/16–9/20 ダウンロード フォルダの時代</a>
+    <a href="#ch1">9/21 Git 化</a>
+    <a href="#ch2">9/26 高DPI と英語化</a>
+    <a href="#ch3">9/27 画像保存とブックマーク整理</a>
+    <a href="#ch4">9/30–10/1 未明 ファビコンとマネージャー</a>
+    <a href="#ch5">10/1 午前 仕上げ</a>
+    <a href="#ch6">10/1 夜 公開の準備</a>
+    <a href="#ch7">10/3 署名の断念</a>
+    <a href="#ch8">10/4 Store 版と 1.1 系</a>
+    <a href="#ch9">10/5–10/14 Store 公開と手直し</a>
+    <a href="#ch10">10/15–10/16 日本語のページと用途別の AI</a>
+    <a href="#ch11">11/5 ブックマークの仕上げ</a>
+    <a href="#ch13">11/18–11/19 AI に聞く</a>
+    <a href="#ch14">11/24 広告ブロックと IDM</a>
+    <a href="#versions">バージョン対応表</a>
+    <a href="#bugs">不具合と修正</a>
+  </nav>
+
+  <section class="chapter" id="pre">
+    <header class="ch"><div class="eyebrow">Before Voyager · 9月中旬</div><h2>前史：「AI 専用ブラウザ」から栞へ</h2>
+      <p class="lead">Voyager の出発点は「AI 専用ブラウザを考えよう」というひと言でした。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">9月中旬</span><span>Web 版の試作</span><span class="builds">栞（SHIORI）</span></div>
+        <h3>入力そのものが行き先になるブラウザ</h3>
+        <ul><li>最初の栞は「ページを描く」のではなく「行き先を読んで編む」ブラウザだった。質問でもニュースの依頼でも URL でも、返ってくるのはサイトの生の画面ではなく、出典付きの読み物。検索には Grok の web_search を使った。</li>
+          <li>スタート画面に4枚のカード（今日の要点、円相場、この考え方、週末の天気）。続きの質問は同じタブに残り、履歴は端末の中だけ。ウェブを辿るのは押したときだけ（クレジットを守るため）。</li></ul></li>
+      <li><div class="meta"><span class="when">9月中旬</span><span>方針転換</span></div>
+        <h3>「標準表示が基本、AI は補助」へ</h3>
+        <ul><li>アドレスバーを上に移し、URL を入れたらまずページそのものを開く。上の切り替えは「標準／要点」で、標準が最初。要点は頼んだときだけ作るので、ページを開くだけでは AI を動かさない。</li>
+          <li>埋め込みを拒むサイト（Wikipedia など）は、元のページへの案内を出す。この「ふつうのブラウザに、AI を選んで使う」形が、今の Voyager の考え方につながっている。</li></ul></li>
+      <li><div class="meta"><span class="when">9/16 まで</span><span>2本立て</span><span class="builds">栞 v2.1.2 ／ 栞 v0.2.0</span></div>
+        <h3>Electron 版と WebView2 版、そして点検</h3>
+        <ul><li>Electron 37 同梱の「栞 v2.1.2」（7-Zip の自己解凍インストーラー、約111MB）と、.NET 10 ＋ WebView2 の「栞 v0.2.0」（zip）。「栞」という名前はビルドツールが勝手に付けた。</li>
+          <li>点検の結果、悪さをするコードは無し。ただし直すべき点が並んだ：Electron 37 はサポート終了（2026-01-13）、どこにも署名が無い、ポップアップが無制限に開ける、右クリックの「新しいタブで開く」が file:// まで通す、WebView2 版は .NET が入っていない PC では起動しない、アンインストールが自分自身を消そうとして残骸が出る、「アプリと機能」に出ない、タブを切り替えるたびに読み込み直す、会社名が「GitHub, Inc.」のまま。</li>
+          <li><span class="tag bug">不具合</span>AI を選び直しても前の AI に戻る（タブに前のアドレスが残ったまま描いていた）。</li>
+          <li>軽さを買って WebView2 版を土台にし、両方のいいところを合わせることに決めた。正式名は Voyager（Explorer → Navigator → Voyager）、内部の名前は V'Ger（『スター・トレック』劇場版1作目）。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch0">
+    <header class="ch"><div class="eyebrow">Day 1–5 · 9/16–9/20 · ダウンロード フォルダ</div><h2>ダウンロード フォルダの時代：1.0.0 と、ビルドの仕組みづくり</h2>
+      <p class="lead">Git に入る前の5日間です。ソースの履歴は残っていませんが、ビルド用スクリプトが rebuild2 から rebuild12 まで代替わりしながら残っていて、何に困って何を直したかが読めます。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">09-16 15:33–15:39</span><span>README・app.manifest・build.ps1</span><span class="builds">設計</span></div>
+        <h3>Voyager 1.0.0 の設計</h3>
+        <ul><li>.NET 10 ／ WinForms ／ WebView2。Chromium を同梱せず、Windows の WebView2 を共有する。</li>
+          <li><span class="tag fix">修正</span>栞の AI 切り替えの不具合：選び直したら必ずスタート画面を通す。</li>
+          <li><span class="tag fix">修正</span>タブごとにビューを残し、切り替えてもログインやスクロールを保つ。</li>
+          <li>インストーラーを MSI に。「アプリと機能」から消せるように。</li></ul></li>
+      <li><div class="meta"><span class="when">09-17 07:15–07:18</span><span>make-voyager.cmd</span><span class="builds">1.0.0</span></div>
+        <h3>最初の MSI</h3>
+        <ul><li>publish（self-contained）→ WiX → インストールを1本のスクリプトに。</li></ul></li>
+      <li><div class="meta"><span class="when">09-17 07:17–07:38</span><span>rebuild-voyager.cmd → rebuild2〜3</span><span class="builds">1.0.2–1.0.3</span></div>
+        <h3>入れ直しても中身が変わらない問題</h3>
+        <ul><li><span class="tag bug">不具合</span>同じバージョン番号のままだと、MSI がファイルを置き換えない。</li>
+          <li><span class="tag fix">修正</span>まず古い版を消してから入れる → ビルドごとに番号を1つ進める方式へ。</li></ul></li>
+      <li><div class="meta"><span class="when">09-17 07:27–12:45</span><span>rebuild4〜6</span><span class="builds">1.0.4–1.0.9</span></div>
+        <h3>スクリプトの手直し</h3>
+        <ul><li><span class="tag bug">不具合</span><span class="mono">echo 1&gt;file</span> の「1」がリダイレクト記号として扱われ、番号が書けない → 括弧で囲む。</li>
+          <li>publish の失敗を確実に拾う（終了コードと、Voyager.exe ができたか）。</li></ul></li>
+      <li><div class="meta"><span class="when">09-17 21:03</span><span>rebuild7</span><span class="builds">1.0.12</span></div>
+        <h3>番号を「入っている版＋1」で決める</h3>
+        <ul><li>実際に入っている版から次の番号を出すので、古い番号で入れてしまう（ダウングレード）ことが起きない。</li></ul></li>
+      <li><div class="meta"><span class="when">09-18 17:20–18:01</span><span>rebuild8〜9</span><span class="builds">1.0.13–1.0.14</span></div>
+        <h3>画面付きのインストーラー</h3></li>
+      <li><div class="meta"><span class="when">09-18 18:26</span><span>rebuild10</span><span class="builds">1.0.15</span></div>
+        <h3>1本の大きな exe をやめて、ばらのファイルに</h3>
+        <ul><li><span class="tag bug">不具合</span>43MB の1ファイルにまとめた署名なしの exe を、常駐のウイルス対策が初回起動のたびに丸ごと読み、起動に45秒かかった。</li>
+          <li><span class="tag fix">修正</span>self-contained のまま1ファイルにはしない。中身の大半は Microsoft 署名のランタイムなので、すぐ通る。</li></ul></li>
+      <li><div class="meta"><span class="when">09-18</span><span>ダウンロード フォルダ</span><span class="builds">1.0.16</span></div>
+        <h3>ビルド番号が戻らない仕組み</h3>
+        <ul><li><span class="tag bug">不具合</span>作った MSI と、番号を控えていた buildno.txt が掃除ソフトで消え、次のビルドが 1.0.1 に戻った。</li>
+          <li><span class="tag fix">修正</span>nextbuild.ps1 を作り、番号を「登録情報の控え・入っている exe・buildno.txt・フォルダの成果物」の最大＋1で決める（1.0.16）。成果物が全部消えても番号は戻らない。デバッグログと debug.on はアプリのデータフォルダへ移した。</li></ul></li>
+      <li><div class="meta"><span class="when">09-20 ごろ</span><span>1.0.34 の頃の点検</span><span class="builds">1.0.34–1.0.35</span></div>
+        <h3>人に渡す前の点検</h3>
+        <ul><li>ログは配布版では出ない（debug.on はインストーラーに入っていない）。</li>
+          <li>WebView2 が無い PC への備えは、起動時のチェックがすでに入っていた（日本語で説明して、ダウンロードページを開く）。</li>
+          <li>日本語フォントの入っていない Windows では、日本語が □ になる。落ちはしないが読めない（未対応のまま）。</li>
+          <li><span class="tag bug">不具合</span>サイドバーの遅延展開用の印に、NUL バイトがソースへ直に埋まっていて、ファイルがバイナリ扱いになる。<span class="tag fix">修正</span>印をやめて「Tag を持たない子」で見分ける形に（9/20 23:09 には直っている）。</li>
+          <li>まだ試していない道として、ノート PC の拡大率（125%・150%）と、バーの » あふれ表示が残った。</li></ul></li>
+      <li><div class="meta"><span class="when">09-19 00:11–09-20 23:12</span><span>ダウンロード フォルダ</span><span class="builds">1.0.17–1.0.36</span></div>
+        <h3>機能を足していった21ビルド</h3>
+        <ul><li>9/19 01:17 に、1.0.19 の時点のブックマークと設定のバックアップがある（ブックマーク機能を作っていた頃）。アプリ一覧の確認用 arpcheck.ps1 もこの頃。</li>
+          <li>1.0.36 のログには、サイドバー・アドレス欄・内部ページの記録があり、Git に入れた 1.0.36 と同じ形になっている。この間の細かい中身は、ソースの履歴が無いので追えない。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch1">
+    <header class="ch"><div class="eyebrow">Day 6 · 9/21</div><h2>Git 化：非公開リポジトリを作る</h2>
+      <p class="lead">GitHub に非公開のリポジトリを作り、その時点のソース（v1.0.36）を丸ごと入れた日です。ダウンロード フォルダでの最後の記録は 13:44 に始めた 1.0.37 のビルドで、この日の 14:40 にフォルダごとバックアップを取り、作業場所は今の作業フォルダに移りました。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">09-21 12:31</span><span class="hash">7104e24</span></div>
+        <h3>Initial commit</h3><ul><li>GitHub が作る最初の README と .gitignore。</li></ul></li>
+      <li><div class="meta"><span class="when">09-21 14:02</span><span class="hash">d0dc483</span><span class="builds">1.0.36</span></div>
+        <h3>Voyager v1.0.36 のソースを登録</h3><ul><li>C# のソース、WiX のインストーラー、アイコン、ビルド用スクリプト。29ファイル・4,155行。</li></ul></li>
+      <li><div class="meta"><span class="when">09-21 15:29 / 15:37</span><span class="hash">6b32cac · c261882</span></div>
+        <h3>.gitignore の整備と、アプリのマニフェスト追加</h3></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch2">
+    <header class="ch"><div class="eyebrow">Day 11 · 9/26</div><h2>高DPI と英語化：画面とインストーラーを二か国語に</h2>
+      <p class="lead">1.0.53〜1.0.68。拡大率 150%・200% の画面で崩れないようにし、画面とインストーラーの両方を日英に対応させた日です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">09-26 17:17</span><span class="hash">6f84f2d</span><span class="builds">1.0.53–1.0.57</span></div>
+        <h3>画面全体を拡大率に合わせる／About ページ</h3>
+        <ul><li>字・アイコン・行の高さ・メニューを、モニターごとの拡大率（96/144/192 dpi）に合わせる。</li>
+          <li>NASA/JPL の想像図を載せた「Voyager について」。</li>
+          <li>ダウンロードの保存先と「毎回たずねる」、ページの右クリックに画像の項目、アドレス欄の最初のクリックで全選択、アドレス欄の右クリックを暗い配色に。</li></ul></li>
+      <li><div class="meta"><span class="when">09-26 18:29</span><span class="hash">f9b2d9f</span><span class="builds">1.0.58–1.0.60</span></div>
+        <h3>英語の README と、ビルドの待ち処理の修正</h3>
+        <ul><li><span class="tag bug">不具合</span>build.cmd の <span class="mono">timeout</span> が、入力をリダイレクトした状態だと止まる。<span class="mono">ping</span> で待つ形に。</li></ul></li>
+      <li><div class="meta"><span class="when">09-26 18:31</span><span class="hash">63db1b4</span><span class="builds">1.0.58–1.0.60</span></div>
+        <h3>英語の画面と、言語の設定</h3>
+        <ul><li>画面の文字を全部 Strings.cs に集め、日本語と英語を1行に並べて持つ（片方だけ直して食い違うのを防ぐ）。再起動なしで切り替わる。</li>
+          <li>上段の幅のログが常に「収まっている」と出る同語反復だったのを直す。</li></ul></li>
+      <li><div class="meta"><span class="when">09-26 23:28 / 23:29</span><span class="hash">eb78a9f · c096971</span><span class="builds">1.0.61–1.0.67</span></div>
+        <h3>二か国語のインストーラー（英語版 MSI と日本語版 MSI）</h3>
+        <ul><li>英語の綴りをアメリカ式にそろえる（4か所がイギリス式に流れていた）。</li>
+          <li>インストーラーの文字を日英切り替えに。Windows Installer 自体の文字は作る時点で決まるため、同じソースから 1033（英語）と 1041（日本語）の2本を作る。<span class="mono">UILANG</span> で表示言語を指定できる。</li>
+          <li><span class="tag bug">ハマり所</span>SetProperty を30個入れたら、並び順の番号が足りなくなった（空きは24）。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch3">
+    <header class="ch"><div class="eyebrow">Day 12–13 · 9/27–9/28</div><h2>画像保存とブックマーク整理</h2>
+      <p class="lead">1.0.68〜1.0.81。「画像を保存しても何も起きない」の原因を突き止めて作り直し、取り込んだ大量のブックマークを扱えるようにした2日間です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">09-27 02:07</span><span class="hash">e7ed355 · 18f3496</span><span class="builds">1.0.68</span></div>
+        <h3>画像保存の調査用ログ／使っていない古いインストーラーを削除</h3>
+        <ul><li>右クリックした画像、押すまでの時間、3秒以内にダウンロードが始まったかを記録。</li></ul></li>
+      <li><div class="meta"><span class="when">09-27 14:59</span><span class="hash">a114528</span><span class="builds">1.0.70–1.0.72</span></div>
+        <h3>別の言語の版の上から入れ替えられるように</h3>
+        <ul><li><span class="tag bug">不具合</span>日本語版の上に英語版を入れると、両方が登録されたまま残る。1.0.71 を入れたところで、取り残されていた 1.0.65 と 1.0.68 が片付いた。</li></ul></li>
+      <li><div class="meta"><span class="when">09-27 15:31</span><span class="hash">ade2f49</span><span class="builds">1.0.73</span></div>
+        <h3>保存ダイアログが前回のフォルダから開く</h3></li>
+      <li><div class="meta"><span class="when">09-27 15:49</span><span class="hash">0d4a576</span><span class="builds">1.0.74</span></div>
+        <h3>画像を Chromium に頼まず、自分で取ってくる</h3>
+        <ul><li><span class="tag bug">不具合</span>Chromium は押した瞬間に .tmp を書き始めるのに、こちらへの知らせがページを動かすまで遅れる（あるサイトで28秒）。押しても何も起きないように見えていた。</li>
+          <li><span class="tag fix">修正</span>画像のアドレスが分かるときは、すぐ保存ダイアログを出し、ページと同じ Cookie・Referer・User-Agent で取得する。</li></ul></li>
+      <li><div class="meta"><span class="when">09-27 16:10</span><span class="hash">3369068</span><span class="builds">1.0.75</span></div>
+        <h3>画像の種類を中身から判別して拡張子を付ける</h3>
+        <ul><li><span class="tag bug">不具合</span>種類を返さないサーバーだと、拡張子の無いファイルになった。先頭のバイトで JPEG・PNG・WebP などを見分ける。</li></ul></li>
+      <li><div class="meta"><span class="when">09-27 23:50</span><span class="hash">7c2b93f</span><span class="builds">1.0.76–1.0.80</span></div>
+        <h3>ブックマークを好きなフォルダへ移す／大きなフォルダで固まらない</h3>
+        <ul><li>バーとサイドバーの右クリックに「フォルダへ移動」。</li>
+          <li><span class="tag bug">不具合</span>取り込んだ2,363件のフォルダを開くたびに5.5秒固まる → 開いたときに中身を作る形に。</li>
+          <li><span class="tag bug">不具合</span>1.0.78 で272件のフォルダを開くと応答しなくなる → 子のメニューにも高さの上限。</li>
+          <li><span class="tag bug">不具合</span>子のメニューが隣のモニターへはみ出す → 収まらなければ左に開く。サイドバーの子メニューがすぐ閉じる → フォーカスを渡す。</li></ul></li>
+      <li><div class="meta"><span class="when">09-28 00:18</span><span class="hash">97793fa</span><span class="builds">1.0.81</span></div>
+        <h3>★ で入れる場所を選べる（Chrome と同じ小窓）</h3>
+        <ul><li><span class="tag bug">不具合</span>登録済みのページで ★ を押すと黙って消えていた。バーの「このページを追加」が、あふれた先へ見えないまま入っていた。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch4">
+    <header class="ch"><div class="eyebrow">Day 15–16 · 9/30–10/1 未明</div><h2>ファビコンの取り違えと、ブックマークマネージャー</h2>
+      <p class="lead">1.0.82〜1.0.86。別のサイトのファビコンがブックマークに書き込まれる不具合を直し、ブックマークマネージャーをタブとして作り始めました。</p></header>
+    <ol class="log">
+      <li class="side"><div class="meta"><span class="when">09-30 14:08</span><span class="hash">ff9dc08</span><span>PR #1（取り込まずに閉じた）</span></div>
+        <h3>移った先のファビコンを前のページに書かない（狭い直し方）</h3>
+        <ul><li>ファビコンを読み込んで待っているあいだにページが移ったら書かない、という直し方（+9行、ビルドも実行もしていない）。本当の原因の「転送対策の記録の消し忘れ」には届いていなかったので、こちらで作り直した（2f558f3）。PR は取り込まずに閉じ、枝も消した（10/1）。</li></ul></li>
+      <li><div class="meta"><span class="when">09-30 23:44</span><span class="hash">2f558f3</span><span class="builds">1.0.82</span></div>
+        <h3>最後に開いたブックマークへ、別のサイトのファビコンを書かない</h3>
+        <ul><li><span class="tag bug">不具合</span>バーから Yahoo! を開いたあと、戻るやリンクで別のサイトへ行くと、そのファビコンが Yahoo! のブックマークに書かれる。転送対策の記録を消し忘れていた。</li>
+          <li><span class="tag fix">修正</span>開いたページとその転送のあいだだけ記録を残し、リンク・戻る・進む・再読み込みでは消す。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 00:31</span><span class="hash">dd2d777</span><span class="builds">1.0.83</span></div>
+        <h3>ブックマークマネージャー（段階1）</h3>
+        <ul><li>左にフォルダの木、右に中身、全体の検索。開く・編集・削除・新しいフォルダ。</li>
+          <li>中身はページに埋め込まず、メッセージで受け渡す（NavigateToString は2MBまでで、ファビコンだけで入りきらない）。</li>
+          <li><span class="tag bug">不具合</span>内部ページの <span class="mono">&lt;html lang&gt;</span> が常に ja だった → 設定の言語に合わせる。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 00:45</span><span class="hash">dbd1039</span><span class="builds">1.0.84</span></div>
+        <h3>マネージャーの手直し</h3>
+        <ul><li><span class="tag bug">不具合</span>編集の小窓の裏に右クリックメニューが隠れて、貼り付けができない。</li>
+          <li><span class="tag bug">不具合</span><span class="mono">https//example.com</span>（: 抜け）がアドレスとして通る → ホスト名にドットが要る。</li>
+          <li>「アドレスをコピー」を追加。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 02:58</span><span class="hash">6d91044</span><span class="builds">1.0.85–1.0.86</span></div>
+        <h3>複数選択・まとめて移動と削除・元に戻す（段階2）</h3>
+        <ul><li>Ctrl／Shift ＋クリック、Ctrl+A。削除のあと10秒間［元に戻す］が出て、元の位置にそのまま戻る。</li>
+          <li><span class="tag bug">不具合</span>マネージャーでマウスの戻るを押すと、タブはマネージャーのまま AI の画面が出る → 開く前のタブへ戻す。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch5">
+    <header class="ch"><div class="eyebrow">Day 16 · 10/1 午前</div><h2>マネージャーの完成と、使い勝手の仕上げ</h2>
+      <p class="lead">1.0.87〜1.0.94。マネージャーの残り2段階を入れ、アドレス欄・言語・タブまわりを Chrome の動きに寄せた半日です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">10-01 09:31</span><span class="hash">69a8d67</span><span class="builds">1.0.87</span></div>
+        <h3>ドラッグで移動と並べ替え（段階3）</h3>
+        <ul><li>一覧の行を上下にドラッグして並べ替え、フォルダや木へ落として移動。閉じたフォルダの上で止めると開く。Esc で取り消し。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 09:46</span><span class="hash">7984dc6</span><span class="builds">1.0.88</span></div>
+        <h3>重複の一覧（段階4の前半）</h3>
+        <ul><li>同じアドレスをまとめて表示（61組）。「先頭以外をすべて選ぶ」と「フォルダを表示」。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 10:16</span><span class="hash">99d0dd3</span><span class="builds">1.0.89</span></div>
+        <h3>リンク切れの確認（段階4の後半）</h3>
+        <ul><li>押したときだけ、同時に2件まで、同じサイトへは1.5秒空けて確認。404・410・ドメイン無し・接続拒否だけを「切れている」とし、403 や時間切れは「確認できなかった」に分ける。</li>
+          <li>途中でネットが切れたら、それを見分けて止まる。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 10:57</span><span class="hash">f066798</span><span class="builds">1.0.90</span></div>
+        <h3>調査用のログを追加</h3>
+        <ul><li>リンク切れの判定ごとの理由と番号、マネージャーとサイドバーでフォルダを開く時間。</li>
+          <li>誤判定の疑いは、確認し直しても「切れている」0件で、出なかった。遅いとされた552件のフォルダはもう無く、243件で0.14秒。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 11:25</span><span class="hash">29d2896</span><span class="builds">1.0.91–1.0.92</span></div>
+        <h3>アドレス欄で追跡用の引数を畳む／開いたらページにフォーカス</h3>
+        <ul><li>見ているあいだだけ utm_* や fbclid などを隠し、触ると元の全体に戻る。開くアドレスは変えない。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 11:39</span><span class="hash">d6d1dbe</span><span class="builds">1.0.93</span></div>
+        <h3>言語を Windows に合わせる／前回のタブを開き直す</h3>
+        <ul><li>新しく入れた人は「自動」から始まる。サイトに伝える言語も設定に合わせる。</li>
+          <li>タブの復元は最初オフ。前面のタブだけすぐ読み込む。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 12:03</span><span class="hash">b686b0b</span><span class="builds">1.0.94</span></div>
+        <h3>タブをドラッグで並べ替え</h3>
+        <ul><li>隣のタブの真ん中を越えたら入れ替わる。クリックの手ぶれではドラッグにしない。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch6">
+    <header class="ch"><div class="eyebrow">Day 16 · 10/1 午後–夜</div><h2>公開の準備：ライセンス、GitHub Actions、閲覧履歴</h2>
+      <p class="lead">1.0.95〜1.0.97。人に渡せる形にするための土台（ライセンス、自動ビルド、署名の申請）を整え、溜まる一方だった閲覧履歴に手を入れた半日です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">10-01 17:54</span><span class="hash">b3c0672</span></div>
+        <h3>GPL-3.0-or-later で公開する</h3>
+        <ul><li>LICENSE に GPL v3 の全文。README（英日）に、著作権 K-S System、同梱部品のライセンス（WebView2 SDK は BSD 3-Clause、.NET ランタイムは MIT）、About の画像のクレジット。</li>
+          <li>プライバシーの節：テレメトリーなし。外と通信するのは、利用者が頼んだことの一部としてだけ。</li>
+          <li>名前とアイコンはライセンスの対象外。改造版は別の名前とアイコンにしてほしい、と書いた。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 18:30</span><span class="hash">eb6b124 · タグ v1.0.95</span><span class="builds">1.0.95</span></div>
+        <h3>GitHub Actions で 2 本の MSI を作る</h3>
+        <ul><li>ci/build.ps1：build.cmd のうち publish・stage・パッケージの部分だけを切り出したもの（番号決め、アプリを閉じる、インストール、debug.on は手元の PC だけの仕事なので入れない）。</li>
+          <li>main への push は 0.0.&lt;実行番号&gt; で作って14日間だけ保管。タグ vX.Y.Z を打つと、その番号で作って下書きのリリースに MSI 2 本と SHA256SUMS.txt を置く。公開は手で押すまでしない。</li>
+          <li>1.0.95 は Actions で作った最初のリリース。アプリの中身は 1.0.94 と同じ。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 19:30–21:33</span><span class="hash">c17e136 · 358e510 · 4445da5</span></div>
+        <h3>コード署名（SignPath）の申請</h3>
+        <ul><li>無料で署名してもらえる SignPath Foundation に申請し、README に署名の方針を書いた。</li>
+          <li><span class="tag bug">事件</span>358e510 が、前のコミットの文面（Build both MSIs with GitHub Actions）のまま入ってしまった。PowerShell 5 で Set-Content -Encoding utf8NoBOM が通らず、一時フォルダに残っていた古い文面が使われていた。</li>
+          <li>履歴の書き換えはリポジトリの規則で禁止なので、中身の無いコミット 4445da5 で「本当は何をしたか」を書いて訂正した。以後、コミットの文面は WriteAllText で書き、1 行目を確かめてから使う手順に。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 22:15</span><span class="hash">01dae03</span><span class="builds">1.0.96</span></div>
+        <h3>閲覧履歴を 7 日で消す／消去ボタン</h3>
+        <ul><li>WebView2 は、Voyager が一度も見せていない閲覧履歴を自前で溜めていた（History ファイルが 2.5MB）。</li>
+          <li>起動時に 7 日より古い分を消し、設定の「閲覧履歴」にすべて消すボタンを置いた。ログイン状態と Cookie は残す。消したあとは 256KB に。</li>
+          <li>履歴の一覧は作らない。</li></ul></li>
+      <li><div class="meta"><span class="when">10-01 22:44 / 22:48</span><span class="hash">396e76c · a03dc43</span><span class="builds">1.0.97</span></div>
+        <h3>消去の確認文と、README の AI の一覧</h3>
+        <ul><li>履歴を消すと、開いているタブの「戻る／進む」も消える（Chromium と同じ動き）。確認の文にそう書き足した。移動すれば普通に使える。</li>
+          <li>README の AI の一覧が実物と違っていた（Meta AI と DeepSeek が載り、Copilot が抜けていた）。AI の選択画面と同じ 6 つ（Grok・ChatGPT・Claude・Gemini・Perplexity・Copilot）に直した。</li>
+          <li><span class="tag fix">決めたこと</span>拡張機能は入れない。要る機能は Voyager に作り込み、欲しいという人が出てきたら考える。ダウンロードの一覧は棚上げ。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch7">
+    <header class="ch"><div class="eyebrow">Day 18 · 10/3</div><h2>署名の断念</h2>
+      <p class="lead">SignPath Foundation に断られ、Store へは MSIX で出す道に切り替えた日です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">10-03 03:37</span><span class="hash">fed0511</span></div>
+        <h3>SignPath の方針を外す</h3>
+        <ul><li>SignPath Foundation の返事は「まだ公開されてからの実績（知名度）が足りない」。リリースは未署名のまま続けることにし、README の署名の節、「SignPath で署名する予定」、リリースノートのリンクを外した。</li>
+          <li>未署名のインストーラー（MSI・EXE）は Store に出せないので、Store へは MSIX で出す道に切り替える（Store が署名してくれる）。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch8">
+    <header class="ch"><div class="eyebrow">Day 19 · 10/4</div><h2>Microsoft Store 版（MSIX）と 1.1 系</h2>
+      <p class="lead">1.0.98〜1.1.0。Partner Center に登録し、MSIX を作って Store に申請した日です。途中で拡大率まわりの不具合が 2 つ見つかりました。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">10-04</span><span>Partner Center</span></div>
+        <h3>Store の開発者登録</h3>
+        <ul><li>無料のアカウントで登録。アプリ名「Voyager AI Browser」を予約し、発行元の表示名は K-S System。</li>
+          <li>割り当てられた ID：K-SSystem.VoyagerAIBrowser、Store ID 9NHXR8XMHG2M。</li></ul></li>
+      <li><div class="meta"><span class="when">10-04 17:59</span><span class="hash">fe302f8</span><span class="builds">1.0.98</span></div>
+        <h3>MSIX 版のデータを MSI 版と分ける</h3>
+        <ul><li>MSIX として動いているときは、設定・ブックマーク・WebView2・ログをパッケージ専用の LocalState に置く。同じ PC の MSI 版の Cookie を読み書きして、同時に起動すると壊し合うのを防ぐ。MSI 版の置き場所は今までどおり。</li></ul></li>
+      <li><div class="meta"><span class="when">10-04 18:13</span><span class="hash">e35398c</span></div>
+        <h3>MSIX を作る（Windows SDK の makeappx／makepri）</h3>
+        <ul><li>マニフェスト、アイコンから作ったタイルとロゴ（scale-100/200、16〜256）、ビルドの手順 4 として MSIX の梱包。MSIX は未署名でよい（Store が署名する）。</li>
+          <li>Windows SDK 10.0.28000 を入れ、開発者モードを有効にして、Add-AppxPackage -Register でこの PC に入れて試した。データは LocalState に分かれていた。</li></ul></li>
+      <li><div class="meta"><span class="when">10-04 19:12</span><span class="hash">c396bc4 · c8ceaee</span><span class="builds">1.0.99</span></div>
+        <h3>サイドバー下部の拡大率対応／resources.pri を 1 つに</h3>
+        <ul><li><span class="tag bug">不具合</span>150%・200% の画面で、サイドバー下の「N 件」の行とボタンの高さが 96 dpi のまま。字だけ大きくなって、件数が消え、ボタンの文字が上半分しか見えなかった。</li>
+          <li><span class="tag bug">不具合</span>makepri の既定の設定だと resources.scale-200.pri が別に分かれ、単体の MSIX では使えない。設定から分割の指定を外し、分かれたらビルドを止める。</li></ul></li>
+      <li><div class="meta"><span class="when">10-04 19:40</span><span class="hash">d11484f</span><span class="builds">1.0.100</span></div>
+        <h3>ページの背景を白に（Chrome と同じ）</h3>
+        <ul><li><span class="tag bug">不具合</span>4K の 150% で、ページが「3 分の 2 くらいしか表示されない」。中央の列にだけ色を塗るサイト（Yahoo! JAPAN など）で、両脇にアプリの暗い背景が見えていた。サイトの表示だけ白にし、内部ページは暗いまま。</li>
+          <li>スクリーンショットだと色が薄くなる件は、画面では普通に見えていたので不具合ではなかった。</li></ul></li>
+      <li><div class="meta"><span class="when">10-04 20:16</span><span class="hash">f319d68 · タグ v1.1.0</span><span class="builds">1.1.0</span></div>
+        <h3>1.1 系の始まり／Store の最初の版</h3>
+        <ul><li>Store の最初の版を 1.1.0 にするため、手元のビルドも 1.0.&lt;n&gt; から 1.1.&lt;n&gt; へ。番号は系ごとに数える（1.1 系は 0 から）。</li>
+          <li>タグ v1.1.0 の Actions（15 回目）が成功し、下書きのリリースができた。下書きはまだ公開していない。</li></ul></li>
+      <li><div class="meta"><span class="when">10-04 夜</span><span>Partner Center</span></div>
+        <h3>申請 1 を提出</h3>
+        <ul><li><span class="tag bug">ハマり所</span>zip を上げてしまった、同じ MSIX を 3 回上げた、Xbox と Mixed Reality の欄に印が入っていた — どれも外して解決。</li>
+          <li>カテゴリはユーティリティ &amp; ツール、無料、全市場。年齢区分は IARC 3+（全年齢）。runFullTrust（デスクトップアプリとして動くための制限付きの権限）は、使う理由を英語で書いた。</li>
+          <li><span class="tag bug">ハマり所</span>日本語の登録情報は、「追加」を押したあと「保存」を押す前に開こうとして、読み込みが終わらなかった。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch9">
+    <header class="ch"><div class="eyebrow">Day 20–29 · 10/5–10/14</div><h2>Store 公開と、普段使いからの手直し</h2>
+      <p class="lead">1.1.1〜1.1.3。Store に並び、普段使いで見つかった使いにくさを直して、2 回目の申請を出すまでです。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">10-08–10-09</span><span>Microsoft Store</span></div>
+        <h3>Store に並ぶ</h3>
+        <ul><li>認定に合格し、「今すぐ公開」で公開した。いま Store に出ているのは申請 2（最終変更 10/9）。</li>
+          <li>公開された版は、日本語の登録情報が抜けて英語のページだけだった。</li></ul></li>
+      <li><div class="meta"><span class="when">10-09 18:15</span><span class="hash">59563a6</span><span class="builds">1.1.1</span></div>
+        <h3>タブ列の右クリックで「新しいタブ」</h3>
+        <ul><li><span class="tag bug">不具合（使い勝手）</span>新しいタブは右上の ＋ か Ctrl+T でしか開けず、タブ列そのものでは何もできなかった。空いた所の右クリックに「新しいタブ」を出す。</li></ul></li>
+      <li><div class="meta"><span class="when">10-14 10:19</span><span class="hash">65c485c</span><span class="builds">1.1.2</span></div>
+        <h3>英語表示のときは Google と Yahoo! を .com へ</h3>
+        <ul><li><span class="tag bug">不具合</span>英語表示でも、スタート画面のボタン、アドレス欄の google／yahoo、ホームの Google が google.co.jp と yahoo.co.jp に行っていた。表示の言語に合わせて .com と .co.jp を切り替える。ブックマークは登録したアドレスのまま。</li>
+          <li>1.1.2 で試してからコミットした。</li></ul></li>
+      <li><div class="meta"><span class="when">10-14 午前</span><span>Partner Center</span><span class="builds">1.1.3</span></div>
+        <h3>申請 3 を提出（日本語の登録情報と 1.1.3）</h3>
+        <ul><li>日本語の説明・スクリーンショット・ロゴを入れ、パッケージを 1.1.3 に差し替えた（タブ列のメニューと .com の修正入り。中身は 1.1.2 と同じ）。</li>
+          <li>1.1.3 の MSIX は ci/build.ps1 で作った。buildno.txt を 1.1.3 にして、次の手元のビルドが 1.1.4 になるようにした。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch10">
+    <header class="ch"><div class="eyebrow">Day 30–31 · 10/15–10/16</div><h2>日本語のページと、用途別の AI</h2>
+      <p class="lead">1.1.4〜1.1.11。Store の 2 回目の公開が通り、前の日にメモにしたばかりの「用途別の AI」が形になった 2 日間です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">10-15</span><span>Partner Center</span></div>
+        <h3>申請 3 が合格、1.1.3 を公開</h3>
+        <ul><li>「今すぐ公開」を押し、Store は 1.1.3 になった。日本語のページも出て、Store から入れた 1.1.3 が動くことも確かめた。</li>
+          <li><span class="tag fix">決めたこと</span>複数の AI に同じ質問を投げて画面を分けて並べる案（ほかのブラウザにある「AI アシスタント」が参考）は入れない。AI のページを何枚も開けば重くなり、Voyager の売りの軽さが飛んでしまう。並べて比べたいのは、主に答えの違いを確かめたい人の使い方。</li></ul></li>
+      <li><div class="meta"><span class="when">10-16 11:30</span><span class="hash">5f53db5（PR #2）</span><span class="builds">1.1.4–1.1.11</span></div>
+        <h3>用途別に AI を選ぶ／ログインのポップアップを本物の窓で開く</h3>
+        <ul><li>アドレス欄の左に用途の切り替えボタン。「一般」「調べもの」「画像」「動画」を選べる。調べものと画像は、設定で用途ごとに決めた AI へ送る。</li>
+          <li>動画のサイトは URL で指示を受け取れないので、指示をクリップボードにコピーしてから、選んだサイトを開く。設定に「用途ごとの AI」の節を作り、サービスごとに出来・料金・ログインが違うことを注意書きで添えた。</li>
+          <li>AI の選択画面にも同じ用途の行を並べ、それぞれに「開く」ボタン（設定には選ぶ欄だけ残す）。動画のサービスにはログインや支払いが要るものがある、と書き添えた。</li>
+          <li><span class="tag bug">不具合</span>AI をまだ選んでいないときに「開く」や用途別の質問を使うと、選択画面が出たまま、その裏でページを読み込んでいた → 先に既定の AI を入れてから送る。</li>
+          <li><span class="tag bug">不具合</span>ログインのポップアップが「このページはポップアップとして開いてください」で止まる。window.open をすべてタブで開いていたので、開いた側とのつながり（window.opener）が切れていた。</li>
+          <li><span class="tag fix">修正</span>大きさを指定した window.open は、同じ WebView2 の環境で独立した窓として開き、NewWindow で受け渡してつながりを保つ。それ以外は今までどおりタブで開く。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch11">
+    <header class="ch"><div class="eyebrow">Day 51 · 11/5</div><h2>ブックマークの仕上げ</h2>
+      <p class="lead">1.1.12〜1.1.23。ブックマークバーのフォルダメニューと、サイドバーの見た目を手直しし、Store にも出した日です。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">11-05 06:11</span><span class="hash">e26788a（PR #3）</span><span class="builds">1.1.12–1.1.23</span></div>
+        <h3>フォルダメニューをマウスのホイールでスクロール</h3>
+        <ul><li><span class="tag bug">不具合</span>バーのフォルダメニューがホイールで動かなかった。WinForms のメニューにはホイールの処理が無く、ホイールの回転はフォーカスのある WebView2 へ行ってしまう。</li>
+          <li><span class="tag fix">修正</span>フォルダメニューを開いているあいだだけ、専用のスレッドで低レベルのマウスフックを掛け、メニューの上でのホイールを拾って、画面の側でなめらかにスクロールする。</li>
+          <li>大きなフォルダも速く開くように（題名の切り詰めの計算を軽くし、項目をまとめて追加）。一度作ったバーのフォルダメニューは、ブックマークが変わるまで使い回す。</li></ul></li>
+      <li><div class="meta"><span class="when">11-05 06:08</span><span class="hash">fef12be（PR #4）</span><span class="builds">1.1.12–1.1.23</span></div>
+        <h3>サイドバーにファビコンを出す</h3>
+        <ul><li><span class="tag bug">不具合</span>サイドバーのツリーにはアイコンが一つも出ていなかった。ブックマークはそれぞれファビコンを持っているのに、描いていなかった。</li>
+          <li>保存してあるファビコン（フォルダはバーと同じ印）を、今の拡大率に合わせて出す。閲覧中に新しく取ったファビコンは、次にサイドバーを読み直したときに反映される。</li></ul></li>
+      <li><div class="meta"><span class="when">11-05 06:55–07:07</span><span>out</span><span class="builds">1.1.23</span></div>
+        <h3>11/5 の 2 つを入れた版／Store へ</h3>
+        <ul><li>手元に 1.1.23 の MSI を作り、out フォルダには ci/build.ps1 で MSI 2 本と MSIX を作った。</li>
+          <li>この MSIX を Store に出し、1.1.23 が公開されている。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch13">
+    <header class="ch"><div class="eyebrow">Day 64–65 · 11/18–11/19</div><h2>足りない機能の洗い出しと「AI に聞く」</h2>
+      <p class="lead">1.1.24〜1.1.28。足りない機能を並べてもらい、AI ブラウザらしさが一番出る「開いているページを AI に渡す」を、軽さを守る形で作った 2 日間です。</p></header>
+    <ol class="log">
+      <li class="side"><div class="meta"><span class="when">11-18 23:35</span><span>洗い出し</span></div>
+        <h3>今の Voyager に足りない機能</h3>
+        <ul><li>Chrome・Edge・Brave や AI ブラウザ（Edge の Copilot、Arc、Comet）と比べて 10 項目。AI まわりは「見ているページについて AI に聞く」「AI のサイドパネル」「選んだ文字を AI に送る」。普通のブラウザとしては閲覧履歴の一覧、閉じたタブを開き直す、ダウンロードの一覧、広告ブロック、アドレス欄の候補など。</li>
+          <li><span class="tag fix">決めたこと</span>Voyager を重くする機能は入れない。裏で動き続けるものは作らず、押したときだけ動く形にする。AI のサイドパネルは重いほうに入れた。頻繁に出すのではなく、機能や修正が溜まってから出す。</li></ul></li>
+      <li><div class="meta"><span class="when">11-19 00:46</span><span class="hash">PR #5</span><span class="builds">1.1.24–1.1.26</span></div>
+        <h3>「AI に聞く」：ページの本文をコピーして AI のタブを開く</h3>
+        <ul><li>アドレス欄の右のボタンと、ページの右クリックに「要約」「要点」「質問」。押すとページの本文を読み取ってクリップボードに入れ、今選んでいる AI を新しいタブで開く。あとは Ctrl+V で貼って送る。</li>
+          <li>届け方は 3 案から選んだ：本文を URL に入れる案は長いページで切れ、URL だけ送る案はログインが要るページを読めない。コピーなら、どの AI でも長いページでも全部届く。API キーは使わない。</li></ul></li>
+      <li><div class="meta"><span class="when">11-19 01:29</span><span class="hash">PR #6</span><span class="builds">1.1.26–1.1.28</span></div>
+        <h3>貼り付けると URL しか出ない、を 3 つ直す</h3>
+        <ul><li><span class="tag bug">不具合</span>本文（2,347 文字）は読めていたのに、Claude に貼ると URL が出た。クリップボードへの書き込みが、ほかのアプリが使っていると黙って失敗し、前にコピーした URL が残っていた。<span class="tag fix">修正</span>書けたかを読み返して確かめ、失敗したら「コピーできませんでした」と出して AI のタブは開かない。</li>
+          <li><span class="tag bug">不具合</span>「コピーしました」の吹き出しが出ない。AI のタブを開いた瞬間に消されていた。<span class="tag fix">修正</span>少し待ってから出す。</li>
+          <li><span class="tag bug">不具合</span>吹き出しは出るのに、貼っても何も入らない。カーソルが「AI に聞く」ボタンに残ったままで、Ctrl+V が Claude の入力欄に届いていなかった。<span class="tag fix">修正</span>開いた AI のページへフォーカスを移す。</li>
+          <li>1.1.28 で、開いてすぐ Ctrl+V で本文が入ることを確かめた。</li></ul></li>
+      <li><div class="meta"><span class="when">11-19 01:38</span><span class="hash">PR #7</span></div>
+        <h3>README に「AI に聞く」の使い方</h3>
+        <ul><li>日英の README に手順を書いた（ボタン → 要約・要点・質問を選ぶ → AI のタブが開く → Ctrl+V で貼って送る）。貼る前にほかのものをコピーしないこと、送り先は右上の AI ボタンで選ぶことも添えた。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="chapter" id="ch14">
+    <header class="ch"><div class="eyebrow">Day 70 · 11/24</div><h2>広告ブロックと IDM、3 回目の Store 申請</h2>
+      <p class="lead">「拡張機能は入れない」と決めた 10/1 から一歩進めて、広告ブロックだけは拡張機能をそのまま同梱しました。IDM は拡張機能では動かないので、別の道で MSI 版だけに入れる準備をしています。</p></header>
+    <ol class="log">
+      <li><div class="meta"><span class="when">11-24 19:42</span><span class="hash">PR #8</span><span class="builds">1.1.29–1.1.31</span></div>
+        <h3>uBlock Origin Lite を同梱した広告ブロック</h3>
+        <ul><li>WebView2 は展開済みの拡張機能を読み込める。uBlock Origin Lite（最新版、手を加えていない）を Voyager に同梱し、起動時に裏で読み込むので起動は遅くならない。</li>
+          <li>設定に「広告ブロック」のチェック。最初からオン。README に機能とライセンスを書き足した。Voyager も uBlock Origin Lite も GPLv3 なので、同梱して公開版に入れられる。</li>
+          <li>実機で試して問題なし。uBlock Origin Lite 自体の設定画面（サイトごとにオフにするなど）は、WebView2 に拡張機能のボタンが無いのでまだ開けない。</li></ul></li>
+      <li><div class="meta"><span class="when">11-24</span><span>Partner Center</span></div>
+        <h3>広告ブロック入りの 1.1.31 を Store に申請</h3>
+        <ul><li>Voyager-1.1.31-x64 を出し、認定の審査中（申請中）。</li></ul></li>
+      <li class="side"><div class="meta"><span class="when">11-24 20:28</span><span class="hash">PR #9（準備中）</span></div>
+        <h3>ダウンロードを IDM に任せる（build.cmd で入れる版だけ）</h3>
+        <ul><li>IDM の拡張機能は、PC の IDM 本体と「ネイティブメッセージング」でやり取りする。WebView2 はこれに対応していないので、拡張機能では動かない。IDM 社のものなので同梱もできない。</li>
+          <li>代わりに、ダウンロードが始まったら、その URL を IDM 本体（IDMan.exe）に直接渡す。動くのは MSI 版だけで、Store 版では何もしない。</li>
+          <li>IDM が入っているときだけ、設定の「ダウンロード」に「ダウンロードを IDM に任せる」が出る（最初からオン）。「画像を保存」は今までどおり Voyager が保存する。渡せるのは URL だけなので、ログインが要るファイルは IDM で失敗することがある。</li>
+          <li>まだ取り込む前の準備中。</li></ul></li>
+    </ol>
+  </section>
+
+  <section class="ref" id="versions">
+    <h2>バージョン対応表</h2>
+    <p class="lead">ビルドは、作業中のまま（コミットの前に）何度も作っています。各行の「ビルド」は、そのコミットの内容を作り込んでいたビルドで、最後のものに完成形が入っています。</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>ビルド</th><th>日時</th><th>コミット</th><th>入ったもの</th></tr></thead>
+        <tbody>
+          <tr><td class="v">1.0.0</td><td class="v">09-17</td><td class="none">ダウンロード</td><td>最初の MSI</td></tr>
+          <tr><td class="v">1.0.2–1.0.12</td><td class="v">09-17</td><td class="none">ダウンロード</td><td>ビルド番号の自動化、ダウングレード防止（wixpdb のみ残る）</td></tr>
+          <tr><td class="v">1.0.13–1.0.15</td><td class="v">09-18</td><td class="none">ダウンロード</td><td>画面付きインストーラー、ばらのファイルに</td></tr>
+          <tr><td class="v">1.0.1</td><td class="v">09-18 22:18</td><td class="none">ダウンロード</td><td>番号が戻ってしまったビルド</td></tr>
+          <tr><td class="v">1.0.16–1.0.36</td><td class="v">09-18〜20</td><td class="none">ダウンロード</td><td>nextbuild.ps1 以降。MSI 20本（1.0.22 は無し）</td></tr>
+          <tr><td class="v">1.0.36</td><td class="v">09-21</td><td class="h">d0dc483</td><td>Git に登録した最初の版</td></tr>
+          <tr><td class="v">1.0.37–1.0.52</td><td class="v">09-21〜25</td><td class="none">—</td><td class="none">MSI が残っておらず、中身は追えない</td></tr>
+          <tr><td class="v">1.0.53–1.0.57</td><td class="v">09-25〜26</td><td class="h">6f84f2d</td><td>高DPI、About、ダウンロード設定、画像の右クリック</td></tr>
+          <tr><td class="v">1.0.58–1.0.60</td><td class="v">09-26</td><td class="h">f9b2d9f · 63db1b4</td><td>英語の画面、英語の README、ビルドの待ち修正</td></tr>
+          <tr><td class="v">1.0.61–1.0.67</td><td class="v">09-26</td><td class="h">eb78a9f · c096971</td><td>二か国語のインストーラー（1.0.63 は MSI 無し）</td></tr>
+          <tr><td class="v">1.0.68</td><td class="v">09-26〜27</td><td class="h">e7ed355 · 18f3496</td><td>画像保存の調査ログ</td></tr>
+          <tr><td class="v">1.0.70–1.0.72</td><td class="v">09-27</td><td class="h">a114528</td><td>別言語版の入れ替え（1.0.69 は MSI 無し）</td></tr>
+          <tr><td class="v">1.0.73</td><td class="v">09-27</td><td class="h">ade2f49</td><td>前回の保存フォルダ</td></tr>
+          <tr><td class="v">1.0.74</td><td class="v">09-27</td><td class="h">0d4a576</td><td>画像を自分で取得して保存</td></tr>
+          <tr><td class="v">1.0.75</td><td class="v">09-27</td><td class="h">3369068</td><td>画像の種類を中身で判別</td></tr>
+          <tr><td class="v">1.0.76–1.0.80</td><td class="v">09-27</td><td class="h">7c2b93f</td><td>フォルダへ移動、大きなフォルダの高速化</td></tr>
+          <tr><td class="v">1.0.81</td><td class="v">09-27〜28</td><td class="h">97793fa</td><td>★ の小窓</td></tr>
+          <tr><td class="v">1.0.82</td><td class="v">09-30</td><td class="h">2f558f3</td><td>ファビコンの取り違え修正</td></tr>
+          <tr><td class="v">1.0.83</td><td class="v">10-01</td><td class="h">dd2d777</td><td>ブックマークマネージャー</td></tr>
+          <tr><td class="v">1.0.84</td><td class="v">10-01</td><td class="h">dbd1039</td><td>マネージャーの手直し</td></tr>
+          <tr><td class="v">1.0.85–1.0.86</td><td class="v">10-01</td><td class="h">6d91044</td><td>複数選択、元に戻す、マウスの戻る</td></tr>
+          <tr><td class="v">1.0.87</td><td class="v">10-01</td><td class="h">69a8d67</td><td>マネージャーのドラッグ</td></tr>
+          <tr><td class="v">1.0.88</td><td class="v">10-01</td><td class="h">7984dc6</td><td>重複の一覧</td></tr>
+          <tr><td class="v">1.0.89</td><td class="v">10-01</td><td class="h">99d0dd3</td><td>リンク切れの確認</td></tr>
+          <tr><td class="v">1.0.90</td><td class="v">10-01</td><td class="h">f066798</td><td>調査用のログ</td></tr>
+          <tr><td class="v">1.0.91–1.0.92</td><td class="v">10-01</td><td class="h">29d2896</td><td>追跡用の引数を畳む、ページへフォーカス</td></tr>
+          <tr><td class="v">1.0.93</td><td class="v">10-01</td><td class="h">d6d1dbe</td><td>言語の自動、タブの復元</td></tr>
+          <tr><td class="v">1.0.94</td><td class="v">10-01</td><td class="h">b686b0b</td><td>タブの並べ替え</td></tr>
+          <tr><td class="v">1.0.95</td><td class="v">10-01</td><td class="h">eb6b124</td><td>GitHub Actions で作った最初のリリース（タグ v1.0.95、中身は 1.0.94 と同じ）</td></tr>
+          <tr><td class="v">1.0.96</td><td class="v">10-01</td><td class="h">01dae03</td><td>閲覧履歴の自動削除と消去ボタン</td></tr>
+          <tr><td class="v">1.0.97</td><td class="v">10-01</td><td class="h">396e76c · a03dc43</td><td>消去の確認文、README の AI の一覧</td></tr>
+          <tr><td class="v">1.0.98</td><td class="v">10-04</td><td class="h">fe302f8</td><td>MSIX 版のデータを分ける</td></tr>
+          <tr><td class="v">1.0.99</td><td class="v">10-04</td><td class="h">c396bc4 · c8ceaee</td><td>サイドバー下部の拡大率対応、resources.pri を 1 つに</td></tr>
+          <tr><td class="v">1.0.100</td><td class="v">10-04</td><td class="h">d11484f</td><td>ページの背景を白に</td></tr>
+          <tr><td class="v">1.1.0</td><td class="v">10-04</td><td class="h">f319d68</td><td>1.1 系の始まり、Store の最初の版（タグ v1.1.0）</td></tr>
+          <tr><td class="v">1.1.1</td><td class="v">10-09</td><td class="h">59563a6</td><td>タブ列の右クリックで新しいタブ</td></tr>
+          <tr><td class="v">1.1.2</td><td class="v">10-14</td><td class="h">65c485c</td><td>英語表示で Google と Yahoo! を .com へ</td></tr>
+          <tr><td class="v">1.1.3</td><td class="v">10-14</td><td class="h">65c485c</td><td>Store の 2 回目の MSIX（中身は 1.1.2 と同じ。10/15 に公開）</td></tr>
+          <tr><td class="v">1.1.4–1.1.11</td><td class="v">10-16</td><td class="h">5f53db5</td><td>用途別の AI、ログインのポップアップを窓で開く（1.1.5・1.1.10 は MSI 無し）</td></tr>
+          <tr><td class="v">1.1.12–1.1.17</td><td class="v">11-05</td><td class="h">e26788a · fef12be</td><td>ホイールでのスクロール、サイドバーのファビコン（コミット前の作業中のビルド）</td></tr>
+          <tr><td class="v">1.1.18–1.1.22</td><td class="v">11-05</td><td class="none">—</td><td class="none">MSI 無し</td></tr>
+          <tr><td class="v">1.1.23</td><td class="v">11-05</td><td class="h">e26788a · fef12be</td><td>11/5 の 2 つを入れた版。Store で公開中</td></tr>
+          <tr><td class="v">1.1.25–1.1.26</td><td class="v">11-19</td><td class="h">PR #5</td><td>「AI に聞く」（1.1.26 で貼ると URL が出る不具合が見つかる）</td></tr>
+          <tr><td class="v">1.1.27</td><td class="v">11-19</td><td class="h">PR #6（途中）</td><td>コピーの確認、吹き出しの修正</td></tr>
+          <tr><td class="v">1.1.28</td><td class="v">11-19</td><td class="h">PR #6</td><td>AI のページへフォーカス。「AI に聞く」が動くことを確認</td></tr>
+          <tr><td class="v">1.1.29–1.1.30</td><td class="v">11-24</td><td class="h">PR #8</td><td>広告ブロック（作業中のビルド）</td></tr>
+          <tr><td class="v">1.1.31</td><td class="v">11-24</td><td class="h">PR #8</td><td>広告ブロック入りの版。Store に申請中（Voyager-1.1.31-x64）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="ref" id="bugs">
+    <h2>主な不具合と修正</h2>
+    <p class="lead">見つかった版、原因、直したコミットと版の対応です。</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>不具合</th><th>見つかった版</th><th>原因</th><th>直した版</th></tr></thead>
+        <tbody>
+          <tr><td>サイドバーのソースに NUL バイト</td><td class="v">〜1.0.34</td><td>遅延展開の印に生の 0x00</td><td class="v">〜1.0.35</td></tr>
+          <tr><td>栞：AI を選び直しても前の AI に戻る</td><td class="v">栞 v2.1.2</td><td>タブに前のアドレスが残っていた</td><td class="v">1.0.0</td></tr>
+          <tr><td>栞：タブを切り替えるとログインが飛ぶ</td><td class="v">栞 v2.1.2</td><td>切り替えのたびに読み込み直していた</td><td class="v">1.0.0</td></tr>
+          <tr><td>入れ直しても中身が変わらない</td><td class="v">1.0.0</td><td>同じ番号だと MSI がファイルを置き換えない</td><td class="v">1.0.2 <span class="mono">rebuild2</span></td></tr>
+          <tr><td>初回起動に45秒かかる</td><td class="v">〜1.0.14</td><td>43MB の1ファイル exe を常駐スキャンが丸読み</td><td class="v">1.0.15 <span class="mono">rebuild10</span></td></tr>
+          <tr><td>ビルド番号が 1.0.1 に戻る</td><td class="v">1.0.15 の後</td><td>成果物と buildno.txt が消え、番号の手がかりが無くなった</td><td class="v">1.0.16 <span class="mono">nextbuild.ps1</span></td></tr>
+          <tr><td>ビルドの待ちで止まる</td><td class="v">〜1.0.57</td><td>timeout が入力のリダイレクトを嫌う</td><td class="v">1.0.58 <span class="mono">f9b2d9f</span></td></tr>
+          <tr><td>日本語版と英語版が二重に登録される</td><td class="v">1.0.65・1.0.68</td><td>上書き判定が言語まで見ていた</td><td class="v">1.0.71 <span class="mono">a114528</span></td></tr>
+          <tr><td>画像を保存しても何も起きない</td><td class="v">〜1.0.72</td><td>Chromium の知らせが最大28秒遅れる</td><td class="v">1.0.74 <span class="mono">0d4a576</span></td></tr>
+          <tr><td>保存した画像に拡張子が付かない</td><td class="v">1.0.74</td><td>種類を返さないサーバー</td><td class="v">1.0.75 <span class="mono">3369068</span></td></tr>
+          <tr><td>大きなフォルダで5.5秒固まる</td><td class="v">〜1.0.76</td><td>開くたびに木を丸ごと組み立てていた</td><td class="v">1.0.77 <span class="mono">7c2b93f</span></td></tr>
+          <tr><td>272件のフォルダで応答しなくなる</td><td class="v">1.0.78</td><td>子のメニューに高さの上限が無い</td><td class="v">1.0.79 <span class="mono">7c2b93f</span></td></tr>
+          <tr><td>子メニューが隣のモニターへはみ出す</td><td class="v">1.0.78</td><td>WinForms が余地のある画面へ逃がす</td><td class="v">1.0.80 <span class="mono">7c2b93f</span></td></tr>
+          <tr><td>★ で登録済みのものが黙って消える</td><td class="v">〜1.0.80</td><td>★ が「入れる／外す」の切り替えだった</td><td class="v">1.0.81 <span class="mono">97793fa</span></td></tr>
+          <tr><td>別のサイトのファビコンが書き込まれる</td><td class="v">1.0.81</td><td>転送対策の記録を消し忘れていた</td><td class="v">1.0.82 <span class="mono">2f558f3</span></td></tr>
+          <tr><td>内部ページの言語が常に ja</td><td class="v">〜1.0.82</td><td>固定値</td><td class="v">1.0.83 <span class="mono">dd2d777</span></td></tr>
+          <tr><td>編集の小窓で貼り付けできない</td><td class="v">1.0.83</td><td>メニューが小窓の裏に描かれる</td><td class="v">1.0.84 <span class="mono">dbd1039</span></td></tr>
+          <tr><td><span class="mono">https//</span> がアドレスとして通る</td><td class="v">1.0.83</td><td>https:// を足すだけの補正</td><td class="v">1.0.84 <span class="mono">dbd1039</span></td></tr>
+          <tr><td>マネージャーで戻ると AI の画面が出る</td><td class="v">1.0.85</td><td>内部ページの履歴をそのまま戻っていた</td><td class="v">1.0.86 <span class="mono">6d91044</span></td></tr>
+          <tr><td>リンク切れの誤判定（疑い）</td><td class="v">1.0.89</td><td>調べた結果、誤判定は出なかった</td><td class="v">1.0.90 で確認</td></tr>
+          <tr><td>552件のフォルダが遅い（控え）</td><td class="v">—</td><td>フォルダがもう無い。243件で0.14秒</td><td class="v">1.0.90 で確認</td></tr>
+          <tr><td>コミットの文面が前のコミットのまま</td><td class="v">358e510</td><td>PowerShell 5 で utf8NoBOM が通らず、古い一時ファイルを使った</td><td class="v">4445da5（訂正コミット）</td></tr>
+          <tr><td>README の AI の一覧が実物と違う</td><td class="v">〜1.0.96</td><td>一覧を手で書いていた</td><td class="v">1.0.97 <span class="mono">a03dc43</span></td></tr>
+          <tr><td>サイドバー下部が 150%・200% で欠ける</td><td class="v">〜1.0.98</td><td>高さが 96 dpi のまま</td><td class="v">1.0.99 <span class="mono">c396bc4</span></td></tr>
+          <tr><td>MSIX の resources.pri が拡大率ごとに分かれる</td><td class="v">MSIX の試作</td><td>makepri の既定の設定</td><td class="v">1.0.99 <span class="mono">c8ceaee</span></td></tr>
+          <tr><td>4K の 150% でページが 3 分の 2 に見える</td><td class="v">〜1.0.99</td><td>サイトの表示に暗い既定の背景</td><td class="v">1.0.100 <span class="mono">d11484f</span></td></tr>
+          <tr><td>日本語の登録情報が読み込み中のまま</td><td class="v">Partner Center</td><td>「追加」のあと「保存」を押していなかった</td><td class="v">保存してから開く</td></tr>
+          <tr><td>タブ列から新しいタブを開けない</td><td class="v">1.1.0</td><td>タブ列に操作が無かった</td><td class="v">1.1.1 <span class="mono">59563a6</span></td></tr>
+          <tr><td>英語表示でも google.co.jp／yahoo.co.jp へ行く</td><td class="v">1.1.1</td><td>行き先を日本向けに固定していた</td><td class="v">1.1.2 <span class="mono">65c485c</span></td></tr>
+          <tr><td>ログインのポップアップが「ポップアップとして開いてください」で止まる</td><td class="v">〜1.1.3</td><td>window.open をすべてタブで開き、開いた側とのつながりが切れていた</td><td class="v">1.1.11 <span class="mono">5f53db5</span></td></tr>
+          <tr><td>AI 未選択のまま用途別に送ると、選択画面の裏で読み込む</td><td class="v">作業中の 1.1.x</td><td>選択画面を出したまま送っていた</td><td class="v">1.1.11 <span class="mono">5f53db5</span></td></tr>
+          <tr><td>フォルダメニューがホイールで動かない</td><td class="v">〜1.1.11</td><td>WinForms のメニューにホイールの処理が無く、回転が WebView2 へ行く</td><td class="v">1.1.23 <span class="mono">e26788a</span></td></tr>
+          <tr><td>サイドバーにファビコンが出ない</td><td class="v">〜1.1.11</td><td>ツリーにアイコンを描いていなかった</td><td class="v">1.1.23 <span class="mono">fef12be</span></td></tr>
+          <tr><td>「AI に聞く」で貼ると URL が出る</td><td class="v">1.1.26</td><td>クリップボードへの書き込みが黙って失敗し、前の URL が残った</td><td class="v">1.1.27 <span class="mono">PR #6</span></td></tr>
+          <tr><td>「コピーしました」の吹き出しが出ない</td><td class="v">1.1.26</td><td>AI のタブを開いた瞬間に消されていた</td><td class="v">1.1.27 <span class="mono">PR #6</span></td></tr>
+          <tr><td>Ctrl+V で何も入らない</td><td class="v">1.1.27</td><td>フォーカスが「AI に聞く」ボタンに残っていた</td><td class="v">1.1.28 <span class="mono">PR #6</span></td></tr>
+          <tr><td>IDM の拡張機能が使えない</td><td class="v">—</td><td>WebView2 がネイティブメッセージングに対応していない</td><td class="v">URL を IDMan.exe に渡す <span class="mono">PR #9</span>（準備中）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="notes">
+    <h2>この日誌の作り方と限界</h2>
+    <ul>
+      <li>9/16〜9/20 は Git に入る前の時期で、残っていたビルド用スクリプトとログから組み立てました。ソースの履歴が無いので、機能の細かい中身までは分かりません。</li>
+      <li>9/21 以降は、コミットの日時とビルドの作成時刻を並べて対応付けました。ビルドにはコミット前の作業中の変更も含むので、境目は前後することがあります。1.0.37〜1.0.52 などいくつかのビルドは MSI が残っておらず、中身を追えません。</li>
+      <li>時刻は日本時間です。</li>
+      <li>まだ残っていること：アイコンが動くサイトでは、ファビコンを 1 秒ごとに保存し直している。ファビコンの無いページで、WebView2 の既定の地球のアイコンが保存されることがある。</li>
+    </ul>
+  </div>
+</div>
+
+</body></html>
