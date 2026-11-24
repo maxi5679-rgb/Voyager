@@ -363,6 +363,13 @@ internal static class Pages
               </label>
               <p class="meta">{{Strings.DownloadsNote}}</p>
 
+              <h2>{{E(Strings.AdBlockHeading)}}</h2>
+              <label class="check">
+                <input type="checkbox" {{(s.AdBlock ? "checked" : "")}} data-change='{"type":"setAdBlock"}' />
+                {{E(Strings.AdBlockOn)}}
+              </label>
+              <p class="meta">{{Strings.AdBlockNote}}</p>
+
               <h2>{{E(Strings.ContextMenuHeading)}}</h2>
               <label class="check">
                 <input type="checkbox" {{(s.PageContextMenu ? "checked" : "")}} data-change='{"type":"setPageContextMenu"}' />

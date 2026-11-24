@@ -50,6 +50,13 @@
     <Content Include="assets\voyager.jpg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 広告ブロック（uBlock Origin Lite, GPLv3）。src\AdBlock.cs が起動時に読み込む。
+         インストーラ（MSI / MSIX）は publish\** をまるごと拾うので、ここで出力に載せるだけでよい。 -->
+    <None Remove="extensions\**" />
+    <Content Include="extensions\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!--
     WebView2 パッケージは WinForms 版と一緒に WPF 版も参照に加える。
     WPF 版は WindowsBase 5.0.0.0 を要求し、.NET 10 の WindowsBase 4.0.0.0 と衝突して

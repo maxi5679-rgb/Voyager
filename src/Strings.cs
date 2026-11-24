@@ -357,6 +357,12 @@ internal static class Strings
           "The folder is remembered across restarts, so you can send downloads straight to another drive.<br>"
           + "If the folder is gone — an external drive unplugged, say — it quietly falls back to the Windows default.");
 
+    public static string AdBlockHeading => T("広告ブロック", "Ad blocking");
+    public static string AdBlockOn => T("広告とトラッカーをブロックする", "Block ads and trackers");
+    public static string AdBlockNote =>
+        T("同梱の uBlock Origin Lite を使います。切り替えは、開いているページを読み込み直すと反映されます。",
+          "Uses the bundled uBlock Origin Lite. Reload open pages to see the change.");
+
     public static string ContextMenuHeading => T("右クリック", "Right-click");
     public static string PreferPageMenu => T("ページ側のメニューを優先する", "Let the page show its own menu");
     public static string ContextMenuNote =>
