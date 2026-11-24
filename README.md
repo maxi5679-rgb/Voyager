@@ -59,7 +59,8 @@ Picking a different AI never cleared `tab.url`, so the old page was re-rendered.
   when you start it
 - **Ad blocking** with the bundled uBlock Origin Lite, loaded as a WebView2 extension.
   On by default; turn it off in Settings
-- **Downloads** — a default folder you can set, or a prompt for every download
+- **Downloads** — a default folder you can set, or a prompt for every download.
+  In the MSI build, if Internet Download Manager is installed, downloads can be handed to IDM (Settings)
 - **Ask AI** — a button right of the address bar (also on the page's context menu) copies the
   open page's text with a request (summarize, key points, or a question) and opens the chosen AI
   in a new tab; paste and send. The page is read only when you press it; nothing runs in the background

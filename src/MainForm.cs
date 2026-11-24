@@ -1642,6 +1642,11 @@ internal sealed class MainForm : Form
                 if (_uiView.CoreWebView2 is { } abCore) _ = AdBlock.ApplyAsync(abCore.Profile, _settings.AdBlock);
                 return;
 
+            case "setUseIdm":
+                _settings.UseIdm = msg.TryGetProperty("value", out var idm) && idm.ValueKind == JsonValueKind.True;
+                _settings.Save();
+                return;
+
             case "setAskDownloadDir":
                 _settings.AskDownloadDir = msg.TryGetProperty("value", out var ask) && ask.ValueKind == JsonValueKind.True;
                 _settings.Save();
@@ -1790,10 +1795,20 @@ internal sealed class MainForm : Form
         Log.Write($"download: {host} name={name}");
 
         // 「画像を保存」の見張りに、ちゃんと来たことを知らせる
-        if (_imageSaveAt != 0)
+        var imageSave = _imageSaveAt != 0;
+        if (imageSave)
         {
             Log.Write($"  image save: download started after {Environment.TickCount64 - _imageSaveAt}ms");
             _imageSaveAt = 0;
+        }
+
+        // IDM に任せる（自分の PC 用の MSI 版で、IDM が入っていて、設定がオンのとき）。
+        // 「画像を保存」は手元に 1 枚落とすだけなので、IDM は通さない。
+        if (_settings.UseIdm && Idm.Available && !imageSave && Idm.Send(a.DownloadOperation.Uri))
+        {
+            a.Cancel = true;
+            Log.Write("  -> handed to IDM");
+            return;
         }
 
         if (!_settings.AskDownloadDir)

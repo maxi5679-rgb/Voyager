@@ -47,6 +47,12 @@ internal sealed class AppSettings
     /// <summary>広告ブロック（同梱の uBlock Origin Lite）を使うか。既定はオン。</summary>
     public bool AdBlock { get; set; } = true;
 
+    /// <summary>
+    /// ダウンロードを IDM（Internet Download Manager）に任せるか。
+    /// IDM が入った MSI 版でだけ効く（ストア版では設定にも出ない）。Idm を参照。
+    /// </summary>
+    public bool UseIdm { get; set; } = true;
+
     /// <summary>ダウンロードのたびに保存先をたずねるか。</summary>
     public bool AskDownloadDir { get; set; }
 
