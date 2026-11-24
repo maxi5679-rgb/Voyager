@@ -180,7 +180,7 @@ td.none { color: var(--muted); }
           <li><span class="tag fix">修正</span>self-contained のまま1ファイルにはしない。中身の大半は Microsoft 署名のランタイムなので、すぐ通る。</li></ul></li>
       <li><div class="meta"><span class="when">09-18</span><span>ダウンロード フォルダ</span><span class="builds">1.0.16</span></div>
         <h3>ビルド番号が戻らない仕組み</h3>
-        <ul><li><span class="tag bug">不具合</span>作った MSI と、番号を控えていた buildno.txt が掃除ソフトで消え、次のビルドが 1.0.1 に戻った。</li>
+        <ul><li><span class="tag bug">不具合</span>作った MSI と、番号を控えていた buildno.txt が失われ、次のビルドが 1.0.1 に戻った。</li>
           <li><span class="tag fix">修正</span>nextbuild.ps1 を作り、番号を「登録情報の控え・入っている exe・buildno.txt・フォルダの成果物」の最大＋1で決める（1.0.16）。成果物が全部消えても番号は戻らない。デバッグログと debug.on はアプリのデータフォルダへ移した。</li></ul></li>
       <li><div class="meta"><span class="when">09-20 ごろ</span><span>1.0.34 の頃の点検</span><span class="builds">1.0.34–1.0.35</span></div>
         <h3>人に渡す前の点検</h3>
